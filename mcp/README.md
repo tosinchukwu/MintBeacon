@@ -226,13 +226,15 @@ Some MCP hosts use a different label for remote Streamable HTTP connections;
 select **Streamable HTTP** and paste the endpoint URL above. Do not use the
 health-check URL as the MCP server URL.
 
-The root-level `server.json` is the official MCP Registry metadata for this
-remote server. To publish/update the public listing, install the official
-`mcp-publisher` CLI, authenticate with the GitHub account that owns this
-repository, then run `mcp-publisher publish` from the repository root. The
-Registry requires publisher authentication; committing `server.json` alone
-does not publish the listing. After publishing, verify the entry by searching
-for `io.github.tosinchukwu/mintbeacon` in the official Registry.
+The root-level `server.json` is the official MCP Registry metadata.
+The repository includes a GitHub Actions publisher that uses GitHub OIDC
+(no personal access token or repository secret). It validates and publishes
+when `server.json` changes on `main`, and can also be started manually from
+the Actions tab using **Publish MintBeacon to MCP Registry**. Bump the
+`server.json` version for each new public listing release. A successful
+workflow publishes `io.github.tosinchukwu/mintbeacon`; verify it by searching
+that name in the official MCP Registry. Publishing is separate from merging
+code, and the Registry is currently in preview.
 
 ### Local and remote behavior
 
