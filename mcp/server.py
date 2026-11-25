@@ -923,7 +923,11 @@ def handle_request(req, mintbeacon):
     is_notification = "id" not in req or req_id is None
     params = req.get("params") or {}
     request_meta = params.get("_meta") if isinstance(params, dict) else None
-    if isinstance(request_meta, dict) and PROTOCOL_VERSION_META_KEY in request_meta:
+    if isinstance(request_meta, dict) and (
+        PROTOCOL_VERSION_META_KEY in request_meta
+        or CLIENT_CAPABILITIES_META_KEY in request_meta
+        or method == "server/discover"
+    ):
         return _handle_modern_request(req, mintbeacon)
     if method.startswith("notifications/"):
         return None  # e.g. notifications/initialized — no reply
