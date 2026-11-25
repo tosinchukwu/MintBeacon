@@ -13,6 +13,7 @@ Security controls:
 - optional Host allowlist
 - no transaction signing, private keys, or state-changing RPC methods
 """
+import base64
 import json
 import os
 import sys
@@ -28,6 +29,9 @@ import server as mcp_server
 SERVICE_NAME = "MintBeacon MCP"
 MCP_PATH = "/mcp"
 HEALTH_PATH = "/healthz"
+MODERN_PROTOCOL_VERSION = "2026-07-28"
+PROTOCOL_VERSION_META_KEY = "io.modelcontextprotocol/protocolVersion"
+CLIENT_CAPABILITIES_META_KEY = "io.modelcontextprotocol/clientCapabilities"
 MAX_BODY_BYTES = int(os.environ.get("MCP_MAX_BODY_BYTES", "65536"))
 RATE_LIMIT = int(os.environ.get("MCP_RATE_LIMIT_PER_MINUTE", "30"))
 RATE_WINDOW_SECONDS = 60
@@ -64,6 +68,90 @@ def client_key(handler):
     if forwarded:
         return forwarded.split(",", 1)[0].strip()[:80]
     return handler.client_address[0]
+
+
+def _header_mismatch(request, message):
+    return {
+        "jsonrpc": "2.0",
+        "id": request.get("id"),
+        "error": {"code": -32020, "message": "Header mismatch: " + message},
+    }
+
+
+def _decode_mcp_name(value):
+    if value.startswith("=?base64?") and value.endswith("?="):
+        encoded = value[len("=?base64?"):-2]
+        try:
+            return base64.b64decode(encoded, validate=True).decode("utf-8")
+        except Exception:
+            return None
+    # Plain header values must be visible ASCII (plus ordinary spaces).
+    if any(ord(char) < 0x20 or ord(char) > 0x7e for char in value):
+        return None
+    if value.startswith("=?base64?") or value.endswith("?="):
+        return None
+    return value
+
+
+def validate_modern_headers(request, headers):
+    """Validate 2026-07-28 per-request metadata and SEP-2243 routing headers."""
+    params = request.get("params") if isinstance(request, dict) else None
+    params = params if isinstance(params, dict) else {}
+    meta = params.get("_meta")
+    meta = meta if isinstance(meta, dict) else {}
+    body_version = meta.get(PROTOCOL_VERSION_META_KEY)
+    header_version = headers.get("MCP-Protocol-Version")
+    modern = body_version is not None or header_version == MODERN_PROTOCOL_VERSION
+    if not modern:
+        return None
+
+    if not header_version:
+        return _header_mismatch(request, "missing MCP-Protocol-Version header")
+    if body_version != header_version:
+        return _header_mismatch(
+            request, "MCP-Protocol-Version header does not match request _meta"
+        )
+    if header_version != MODERN_PROTOCOL_VERSION:
+        return {
+            "jsonrpc": "2.0", "id": request.get("id"),
+            "error": {
+                "code": -32022,
+                "message": "Unsupported protocol version",
+                "data": {
+                    "supported": [MODERN_PROTOCOL_VERSION, mcp_server.LEGACY_PROTOCOL_VERSION],
+                    "requested": header_version,
+                },
+            },
+        }
+
+    capabilities = meta.get(CLIENT_CAPABILITIES_META_KEY)
+    if not isinstance(capabilities, dict):
+        return {
+            "jsonrpc": "2.0", "id": request.get("id"),
+            "error": {"code": -32602,
+                      "message": "clientCapabilities must be an object in request _meta"},
+        }
+
+    method = request.get("method")
+    method_header = headers.get("Mcp-Method")
+    if not method_header:
+        return _header_mismatch(request, "missing Mcp-Method header")
+    if method_header != method:
+        return _header_mismatch(request, "Mcp-Method header does not match request method")
+
+    name_source = None
+    if method in ("tools/call", "prompts/get"):
+        name_source = params.get("name")
+    elif method == "resources/read":
+        name_source = params.get("uri")
+    if method in ("tools/call", "prompts/get", "resources/read"):
+        name_header = headers.get("Mcp-Name")
+        if not isinstance(name_source, str) or not name_header:
+            return _header_mismatch(request, "missing required Mcp-Name header or body value")
+        decoded = _decode_mcp_name(name_header)
+        if decoded is None or decoded != name_source:
+            return _header_mismatch(request, "Mcp-Name header does not match request body")
+    return None
 
 
 def rate_limited(key):
@@ -120,7 +208,7 @@ class MintBeaconHTTPHandler(BaseHTTPRequestHandler):
             self.send_header("Access-Control-Allow-Methods", "POST, OPTIONS")
             self.send_header(
                 "Access-Control-Allow-Headers",
-                "Content-Type, Accept, Authorization, MCP-Protocol-Version",
+                "Content-Type, Accept, Authorization, MCP-Protocol-Version, Mcp-Method, Mcp-Name",
             )
             self.send_header("Access-Control-Max-Age", "600")
         if extra_headers:
@@ -169,14 +257,18 @@ class MintBeaconHTTPHandler(BaseHTTPRequestHandler):
             })
             return
         if path == MCP_PATH:
+            if self._reject_origin_or_host():
+                return
             self._json(405, {
-                "error": "GET event streams are not supported; use POST /mcp"
+                "error": "GET streams are not supported; use POST /mcp"
             }, {"Allow": "POST, OPTIONS"})
             return
         self._json(404, {"error": "Not found"})
 
     def do_DELETE(self):
         if urlsplit(self.path).path == MCP_PATH:
+            if self._reject_origin_or_host():
+                return
             self._json(405, {
                 "error": "This stateless MCP endpoint does not create sessions"
             }, {"Allow": "POST, OPTIONS"})
@@ -195,8 +287,8 @@ class MintBeaconHTTPHandler(BaseHTTPRequestHandler):
             self._json(415, {"error": "Content-Type must be application/json"})
             return
         accept = self.headers.get("Accept", "")
-        if "application/json" not in accept and "text/event-stream" not in accept:
-            self._json(406, {"error": "Accept must include application/json or text/event-stream"})
+        if "application/json" not in accept or "text/event-stream" not in accept:
+            self._json(406, {"error": "Accept must include both application/json and text/event-stream"})
             return
 
         try:
@@ -231,6 +323,11 @@ class MintBeaconHTTPHandler(BaseHTTPRequestHandler):
             })
             return
 
+        header_error = validate_modern_headers(request, self.headers)
+        if header_error is not None:
+            self._json(400, header_error)
+            return
+
         try:
             response = mcp_server.handle_request(request, self.server.mintbeacon_address)
         except Exception as exc:
@@ -242,12 +339,22 @@ class MintBeaconHTTPHandler(BaseHTTPRequestHandler):
         if response is None:
             self._send(202)
             return
+        if response.get("error", {}).get("code") == -32601 and (
+            request.get("params", {}).get("_meta", {}).get(PROTOCOL_VERSION_META_KEY)
+            == MODERN_PROTOCOL_VERSION
+        ):
+            self._json(404, response)
+            return
+        if response.get("error", {}).get("code") == -32022:
+            self._json(400, response)
+            return
         self._json(200, response)
 
 
 def main():
     address = configured_mintbeacon()
-    host = os.environ.get("MCP_HOST", "0.0.0.0")
+    default_host = "0.0.0.0" if os.environ.get("PORT") else "127.0.0.1"
+    host = os.environ.get("MCP_HOST", default_host)
     port = int(os.environ.get("PORT") or os.environ.get("MCP_PORT", "8000"))
     httpd = ThreadingHTTPServer((host, port), MintBeaconHTTPHandler)
     httpd.daemon_threads = True
