@@ -1,19 +1,25 @@
 # MintBeacon MCP server
 
 A free-mint verifier for AI agents on BNB Smart Chain, exposed over MCP
-(JSON-RPC 2.0, newline-delimited, stdio). Python 3 standard library only —
-no pip dependencies, so it runs anywhere Python 3 is installed.
+(JSON-RPC 2.0) through **local stdio** and **remote Streamable HTTP**.
+Python 3 standard library only — no pip dependencies.
 
 It never signs, never sends transactions, and never holds keys. Everything
 it does is read-only: `eth_call`, `eth_getCode`, `eth_estimateGas`.
 
-## Run it
+## Local MCP: stdio
+
+Run the local server from the repository root:
 
 ```bash
 python3 mcp/server.py
 ```
 
-The server defaults to the deployed MintBeacon contract. Set an override only when you want to use another deployment.
+The stdio transport is unchanged and remains the simplest option for desktop
+agent hosts. It reads newline-delimited JSON-RPC from stdin and writes
+responses to stdout; diagnostic messages go to stderr. The server defaults
+to the deployed MintBeacon contract. Set an override only when you want to
+use another deployment.
 
 ```bash
 MINTBEACON_ADDRESS=0x... python3 mcp/server.py
@@ -44,9 +50,8 @@ Adjust the path to where you checked out this repo:
 }
 ```
 
-The deployed contract address is used by default; set `MINTBEACON_ADDRESS` only to override it. Any MCP client that speaks stdio JSON-RPC works —
-Claude Desktop, MCP Inspector (`npx @modelcontextprotocol/inspector`),
-or any agent host.
+The deployed contract address is used by default; set `MINTBEACON_ADDRESS` only to override it. Any MCP client that speaks stdio JSON-RPC works — Claude Desktop, MCP
+Inspector (`npx @modelcontextprotocol/inspector`), or another local agent host.
 
 ## `MINTBEACON_ADDRESS` — deployment status
 
@@ -114,14 +119,90 @@ This is a curated feed, not a MintBeacon verification — run `verify_mint`
 on a contract before acting on it. If the fetch fails, or the feed has no
 `projects` list, it returns an MCP error saying so. It never invents a list.
 
-## Agent integration and discovery
+## Remote MCP: Streamable HTTP
 
-This repository currently provides an MCP **stdio** server, not a hosted
-remote HTTP MCP endpoint. An agent host must install/run the server locally
-(or in its own environment) using the configuration above. Do not submit a
-made-up hosted MCP URL to directories. A remotely callable endpoint is a
-separate deployment task; the server's tools and safety behavior should be
-kept transport-independent when that is added.
+The remote transport is implemented in `mcp/http_server.py`. It reuses the
+same `handle_request` function and the same three tools as the stdio server;
+it does not fork or duplicate the verification logic.
+
+Run locally:
+
+```bash
+cd mcp
+python3 http_server.py
+```
+
+The default listener is `0.0.0.0:8000`. Set `PORT` (preferred by hosting
+platforms) or `MCP_PORT` to change the port. The MCP endpoint is
+`http://localhost:8000/mcp`; health check is `/healthz`.
+
+### Deploy on Render
+
+A root-level `render.yaml` blueprint creates a Python web service named
+`mintbeacon-mcp`, with no third-party packages. In Render, create a new
+Blueprint from this GitHub repository and review the service settings before
+deploying. The intended public endpoint is:
+
+`https://mintbeacon-mcp.onrender.com/mcp`
+
+The intended health URL is:
+
+`https://mintbeacon-mcp.onrender.com/healthz`
+
+If Render assigns a different hostname, update `MCP_ALLOWED_HOSTS` in the
+service environment to that exact hostname (without scheme or path). Keep
+the hostname in sync with the deployed URL.
+
+### Remote server environment
+
+- `MINTBEACON_ADDRESS`: deployed MintBeacon contract address.
+- `MCP_ALLOWED_HOSTS`: comma-separated exact hostnames accepted by the
+  service. The Render blueprint sets the expected `mintbeacon-mcp.onrender.com`.
+- `MCP_ALLOWED_ORIGINS`: comma-separated browser origins allowed by CORS.
+  Defaults to `https://mintbeacon.vercel.app`. Non-browser MCP clients
+  without an `Origin` header can connect without CORS.
+- `MCP_RATE_LIMIT_PER_MINUTE`: per-client request limit (default 30).
+- `MCP_MAX_BODY_BYTES`: maximum JSON request body (default 65,536 bytes).
+- `PORT` or `MCP_PORT`: HTTP listener port (default 8000).
+
+The endpoint is stateless: it does not issue MCP session IDs, persist session
+state, or support server-initiated SSE streams. POST requests to `/mcp`
+receive JSON responses; notifications receive HTTP 202. GET and DELETE on
+`/mcp` return 405 because this server does not offer SSE streams or sessions.
+This is a valid stateless Streamable HTTP pattern for request/response MCP
+clients. Clients must POST JSON-RPC requests with `Content-Type:
+application/json` and an `Accept` header containing `application/json`
+or `text/event-stream`.
+
+The HTTP transport applies a request-size limit, per-client in-memory rate
+limit, and Origin allowlist. The reverse proxy must overwrite
+`X-Forwarded-For`; otherwise a caller could spoof the address used for
+rate-limiting. Browser clients must use an allowed Origin. Direct agent
+clients generally do not send an Origin header.
+
+### Connect a remote MCP client
+
+Use this remote MCP URL in an MCP client that supports Streamable HTTP:
+
+`https://mintbeacon-mcp.onrender.com/mcp`
+
+For example, an MCP client may accept a remote server entry with transport
+type `streamable-http` and that URL. The exact configuration syntax varies
+by host. Do not configure a remote URL until the Render service has actually
+been deployed and both `/healthz` and an MCP `initialize` request have been
+verified.
+
+### Local and remote behavior
+
+Both transports expose the same tools and safety model:
+
+- Local stdio: `python3 mcp/server.py`.
+- Remote HTTP: `python3 mcp/http_server.py` (or the Render deployment).
+- Neither transport signs, sends, or sponsors transactions.
+- `verify_mint` is a read-only `eth_call`; it does not increment on-chain
+  hackathon counters.
+- Only a successful, separately user-approved website `checkMint`
+  transaction can record an on-chain check.
 
 For an agent workflow:
 
@@ -179,7 +260,7 @@ as fallback). No mainnet paid lane until one route is confirmed working.
 
 ## Tested
 
-2026-11-20, driven over stdio JSON-RPC (`initialize` → `tools/list` →
+Local stdio test record (2026-11-20), driven over JSON-RPC (`initialize` → `tools/list` →
 `tools/call`, clean EOF exit):
 
 - `verify_mint` AgentEcho `0xff2dac2389a6a9593209b6008d5ffa9e73aa19c2` →
