@@ -53,6 +53,17 @@ The current product focuses on the deployed on-chain verifier, public website,
 and read-only MCP agent integration. See [`BUILD_NOTE.md`](BUILD_NOTE.md)
 for implementation details, test history, limitations, and remaining work.
 
+### Website wallet support (2026-11-25)
+
+The website now uses a Windows XP-inspired desktop presentation and supports:
+
+- **Injected EVM wallets:** EIP-6963 discovery lets users choose among compatible browser wallets when multiple providers are announced; a legacy `window.ethereum` fallback is retained.
+- **Agent-controlled wallets:** AI agents with an authorised wallet tool can use the website's **Copy AI-agent transaction instructions** action. The generated instructions specify BNB Smart Chain (chain ID 56), the Agent ID eligibility check, MintBeacon destination, `checkMint(address)` call, target address, and calldata.
+- **Binance Agentic Wallet:** use Binance's official Agentic Wallet Skills through a trusted supported AI agent. It is not presented as a normal website QR-code or browser-extension connection.
+- **Transaction safety:** the site checks Agent ID ownership before gas estimation. Wallets without an Agent ID receive an eligibility warning. Eligible transactions are previewed; the user/agent must still approve the transaction through the wallet's normal authorisation flow.
+
+A wallet can submit an on-chain check only if the actual signing address holds an eligible Agent ID. Merely connecting an EOA or using an AI agent does not bypass this contract gate. WalletConnect support is not claimed unless separately integrated and verified.
+
 ## Repo layout
 
 ```
