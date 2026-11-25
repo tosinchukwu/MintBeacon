@@ -806,6 +806,113 @@ def tool_error_text(message):
         {"error": message}, indent=2)}], "isError": True}
 
 
+MODERN_PROTOCOL_VERSION = "2026-07-28"
+LEGACY_PROTOCOL_VERSION = "2025-11-25"
+SERVER_INFO_META_KEY = "io.modelcontextprotocol/serverInfo"
+PROTOCOL_VERSION_META_KEY = "io.modelcontextprotocol/protocolVersion"
+CLIENT_CAPABILITIES_META_KEY = "io.modelcontextprotocol/clientCapabilities"
+MINTBEACON_INSTRUCTIONS = (
+    "MintBeacon is a read-only BNB Smart Chain mainnet mint verifier. "
+    "Call mintbeacon_status to inspect the live deployment and counters. "
+    "Call verify_mint with the target contractAddress and, whenever possible, "
+    "the actual user's or agent's own checkerAddress; if omitted, the legacy "
+    "deployer-wallet default is used and the result is not personalised to the caller. "
+    "verify_mint uses eth_call and does not create a transaction or increment counters. "
+    "The separate website offers an optional user-approved on-chain check; this MCP "
+    "server never signs or sends transactions."
+)
+
+
+def _modern_result(result):
+    """Add required 2026-07-28 response metadata to a successful result."""
+    if not isinstance(result, dict):
+        result = {}
+    result.setdefault("resultType", "complete")
+    result["_meta"] = {SERVER_INFO_META_KEY: {"name": SERVER_NAME, "version": VERSION}}
+    return result
+
+
+def _handle_modern_request(req, mintbeacon):
+    params = req.get("params") or {}
+    meta = params.get("_meta") if isinstance(params, dict) else None
+    if not isinstance(meta, dict):
+        return err_result(req.get("id"), -32602, "modern MCP requests require params._meta")
+    requested = meta.get(PROTOCOL_VERSION_META_KEY)
+    if requested != MODERN_PROTOCOL_VERSION:
+        return {
+            "jsonrpc": "2.0", "id": req.get("id"),
+            "error": {
+                "code": -32022,
+                "message": "Unsupported protocol version",
+                "data": {
+                    "supported": [MODERN_PROTOCOL_VERSION, LEGACY_PROTOCOL_VERSION],
+                    "requested": requested,
+                },
+            },
+        }
+    capabilities = meta.get(CLIENT_CAPABILITIES_META_KEY)
+    if not isinstance(capabilities, dict):
+        return err_result(req.get("id"), -32602,
+                          "params._meta.io.modelcontextprotocol/clientCapabilities must be an object")
+
+    method = req.get("method", "")
+    req_id = req.get("id")
+    if method == "server/discover":
+        return {"jsonrpc": "2.0", "id": req_id, "result": {
+            "resultType": "complete",
+            "supportedVersions": [MODERN_PROTOCOL_VERSION, LEGACY_PROTOCOL_VERSION],
+            "capabilities": {"tools": {}},
+            "_meta": {SERVER_INFO_META_KEY: {"name": SERVER_NAME, "version": VERSION}},
+            "instructions": MINTBEACON_INSTRUCTIONS,
+            "ttlMs": 60000,
+            "cacheScope": "public",
+        }}
+
+    response = None
+    if method == "tools/list":
+        response = {"jsonrpc": "2.0", "id": req_id, "result": {
+            "tools": TOOLS,
+            "resultType": "complete",
+            "ttlMs": 60000,
+            "cacheScope": "public",
+        }}
+    elif method == "tools/call":
+        response = _handle_tool_call(req, mintbeacon)
+    else:
+        return err_result(req_id, -32601, f"method not found: {method}")
+
+    if response is not None and "result" in response:
+        response["result"] = _modern_result(response["result"])
+    return response
+
+
+def _handle_tool_call(req, mintbeacon):
+    """Shared tools/call implementation for legacy and modern MCP requests."""
+    params = req.get("params") or {}
+    req_id = req.get("id")
+    name = params.get("name")
+    args = params.get("arguments") or {}
+    if name not in ("mintbeacon_status", "verify_mint", "free_mints_feed"):
+        return err_result(req_id, -32602, f"unknown tool: {name!r}")
+    try:
+        if name == "mintbeacon_status":
+            result = tool_mintbeacon_status(mintbeacon)
+        elif name == "verify_mint":
+            result = tool_verify_mint(args, mintbeacon)
+        else:
+            result = tool_free_mints_feed(args)
+    except ValueError as e:
+        return err_result(req_id, -32602, str(e))
+    except ToolError as e:
+        return {"jsonrpc": "2.0", "id": req_id, "result": tool_error_text(str(e))}
+    except Exception as e:
+        return {"jsonrpc": "2.0", "id": req_id,
+                "result": tool_error_text(f"tool {name} failed: {e}")}
+    return {"jsonrpc": "2.0", "id": req_id, "result": {
+        "content": [{"type": "text", "text": json.dumps(result, indent=2)}]
+    }}
+
+
 def handle_request(req, mintbeacon):
     """Returns a response object, or None for notifications (no reply)."""
     if not isinstance(req, dict) or req.get("jsonrpc") != "2.0":
@@ -814,25 +921,20 @@ def handle_request(req, mintbeacon):
     method = req.get("method", "")
     req_id = req.get("id")
     is_notification = "id" not in req or req_id is None
+    params = req.get("params") or {}
+    request_meta = params.get("_meta") if isinstance(params, dict) else None
+    if isinstance(request_meta, dict) and PROTOCOL_VERSION_META_KEY in request_meta:
+        return _handle_modern_request(req, mintbeacon)
     if method.startswith("notifications/"):
         return None  # e.g. notifications/initialized — no reply
 
     if method == "initialize":
         params = req.get("params") or {}
         return {"jsonrpc": "2.0", "id": req_id, "result": {
-            "protocolVersion": params.get("protocolVersion", "2024-11-05"),
+            "protocolVersion": params.get("protocolVersion", LEGACY_PROTOCOL_VERSION),
             "capabilities": {"tools": {}},
             "serverInfo": {"name": SERVER_NAME, "version": VERSION},
-            "instructions": (
-                "MintBeacon is a read-only BNB Smart Chain mainnet mint verifier. "
-                "Call mintbeacon_status to inspect the live deployment and counters. "
-                "Call verify_mint with the target contractAddress and, whenever possible, "
-                "the actual user's or agent's own checkerAddress; if omitted, the legacy "
-                "deployer-wallet default is used and the result is not personalised to the caller. "
-                "verify_mint uses eth_call and does not create a transaction or increment counters. "
-                "The separate website offers an optional user-approved on-chain check; this MCP "
-                "server never signs or sends transactions."
-            ),
+            "instructions": MINTBEACON_INSTRUCTIONS,
         }}
     if method == "ping":
         return {"jsonrpc": "2.0", "id": req_id, "result": {}}
@@ -840,34 +942,9 @@ def handle_request(req, mintbeacon):
         return {"jsonrpc": "2.0", "id": req_id,
                 "result": {"tools": TOOLS}}
     if method == "tools/call":
-        params = req.get("params") or {}
-        name = params.get("name")
-        args = params.get("arguments") or {}
-        if name not in ("mintbeacon_status", "verify_mint", "free_mints_feed"):
-            return err_result(req_id, -32602, f"unknown tool: {name!r}")
-        try:
-            if name == "mintbeacon_status":
-                result = tool_mintbeacon_status(mintbeacon)
-            elif name == "verify_mint":
-                result = tool_verify_mint(args, mintbeacon)
-            else:
-                result = tool_free_mints_feed(args)
-        except ValueError as e:
-            return err_result(req_id, -32602, str(e))
-        except ToolError as e:
-            if is_notification:
-                return None
-            return {"jsonrpc": "2.0", "id": req_id, "result": tool_error_text(str(e))}
-        except Exception as e:
-            if is_notification:
-                return None
-            return {"jsonrpc": "2.0", "id": req_id,
-                    "result": tool_error_text(f"tool {name} failed: {e}")}
         if is_notification:
             return None
-        return {"jsonrpc": "2.0", "id": req_id, "result": {
-            "content": [{"type": "text",
-                         "text": json.dumps(result, indent=2)}]}}
+        return _handle_tool_call(req, mintbeacon)
     return err_result(req_id, -32601, f"method not found: {method}")
 
 
