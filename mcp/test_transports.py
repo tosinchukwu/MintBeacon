@@ -91,7 +91,7 @@ class StreamableHTTPTransportTests(unittest.TestCase):
     def test_initialize_and_tools_list_over_http(self):
         with self.post({
             "jsonrpc": "2.0", "id": 1, "method": "initialize",
-            "params": {"protocolVersion": "2024-11-05"},
+            "params": {"protocolVersion": "2025-11-25"},
         }) as response:
             init = json.loads(response.read())
             self.assertEqual(response.status, 200)
