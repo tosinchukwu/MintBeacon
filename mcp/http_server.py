@@ -65,10 +65,15 @@ def configured_mintbeacon():
 
 
 def client_key(handler):
-    # Hosting proxies should overwrite X-Forwarded-For before forwarding it.
-    forwarded = handler.headers.get("X-Forwarded-For", "")
-    if forwarded:
-        return forwarded.split(",", 1)[0].strip()[:80]
+    # X-Forwarded-For is client-controlled unless a trusted proxy overwrites it.
+    # Default to the TCP peer so callers cannot evade the rate limit by spoofing
+    # this header. Enable proxy parsing only behind a trusted proxy.
+    if os.environ.get("MCP_TRUST_PROXY_HEADERS", "").lower() in ("1", "true", "yes"):
+        forwarded = handler.headers.get("X-Forwarded-For", "")
+        if forwarded:
+            candidate = forwarded.split(",", 1)[0].strip()
+            if candidate:
+                return candidate[:80]
     return handler.client_address[0]
 
 
@@ -252,6 +257,9 @@ class MintBeaconHTTPHandler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         path = urlsplit(self.path).path
+        if path in (HEALTH_PATH, "/", MCP_PATH):
+            if self._reject_origin_or_host():
+                return
         if path == HEALTH_PATH:
             self._json(200, {
                 "ok": True,
@@ -270,8 +278,6 @@ class MintBeaconHTTPHandler(BaseHTTPRequestHandler):
             })
             return
         if path == MCP_PATH:
-            if self._reject_origin_or_host():
-                return
             self._json(405, {
                 "error": "GET streams are not supported; use POST /mcp"
             }, {"Allow": "POST, OPTIONS"})
