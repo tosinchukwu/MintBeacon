@@ -20,10 +20,19 @@ import server as mcp_server
 
 class StdioTransportTests(unittest.TestCase):
     def test_stdio_initialize_and_tools_list(self):
+        modern_meta = {
+            "io.modelcontextprotocol/protocolVersion": "2026-07-28",
+            "io.modelcontextprotocol/clientCapabilities": {},
+            "io.modelcontextprotocol/clientInfo": {"name": "offline-test", "version": "1.0"},
+        }
         requests = [
             {"jsonrpc": "2.0", "id": 1, "method": "initialize",
-             "params": {"protocolVersion": "2024-11-05"}},
+             "params": {"protocolVersion": "2025-11-25"}},
             {"jsonrpc": "2.0", "id": 2, "method": "tools/list"},
+            {"jsonrpc": "2.0", "id": 3, "method": "server/discover",
+             "params": {"_meta": modern_meta}},
+            {"jsonrpc": "2.0", "id": 4, "method": "tools/list",
+             "params": {"_meta": modern_meta}},
         ]
         completed = subprocess.run(
             [sys.executable, str(HERE / "server.py")],
@@ -33,11 +42,18 @@ class StdioTransportTests(unittest.TestCase):
         )
         self.assertEqual(completed.returncode, 0, completed.stderr)
         responses = [json.loads(line) for line in completed.stdout.splitlines()]
-        self.assertEqual(len(responses), 2)
-        self.assertEqual(responses[0]["result"]["serverInfo"]["name"], "mintbeacon")
-        names = {tool["name"] for tool in responses[1]["result"]["tools"]}
+        self.assertEqual(len(responses), 4)
+        self.assertEqual(responses[0]["result"]["protocolVersion"], "2025-11-25")
+        self.assertEqual(responses[2]["result"]["supportedVersions"][0], "2026-07-28")
+        self.assertEqual(
+            responses[2]["result"]["_meta"]["io.modelcontextprotocol/serverInfo"]["name"],
+            "mintbeacon",
+        )
+        names = {tool["name"] for tool in responses[3]["result"]["tools"]}
         self.assertEqual(names, {"mintbeacon_status", "verify_mint", "free_mints_feed"})
-        for tool in responses[1]["result"]["tools"]:
+        self.assertEqual(responses[3]["result"]["resultType"], "complete")
+        self.assertEqual(responses[3]["result"]["cacheScope"], "public")
+        for tool in responses[3]["result"]["tools"]:
             self.assertTrue(tool["annotations"]["readOnlyHint"])
 
 
@@ -87,6 +103,71 @@ class StreamableHTTPTransportTests(unittest.TestCase):
             listed = json.loads(response.read())
             names = {tool["name"] for tool in listed["result"]["tools"]}
             self.assertEqual(names, {"mintbeacon_status", "verify_mint", "free_mints_feed"})
+
+    def test_modern_discover_and_tools_list_over_http(self):
+        meta = {
+            "io.modelcontextprotocol/protocolVersion": "2026-07-28",
+            "io.modelcontextprotocol/clientCapabilities": {},
+            "io.modelcontextprotocol/clientInfo": {"name": "offline-test", "version": "1.0"},
+        }
+        with self.post({
+            "jsonrpc": "2.0", "id": 10, "method": "server/discover",
+            "params": {"_meta": meta},
+        }, {
+            "MCP-Protocol-Version": "2026-07-28",
+            "Mcp-Method": "server/discover",
+        }) as response:
+            discovered = json.loads(response.read())
+            self.assertEqual(discovered["result"]["supportedVersions"][0], "2026-07-28")
+            self.assertEqual(discovered["result"]["resultType"], "complete")
+
+        with self.post({
+            "jsonrpc": "2.0", "id": 11, "method": "tools/list",
+            "params": {"_meta": meta},
+        }, {
+            "MCP-Protocol-Version": "2026-07-28",
+            "Mcp-Method": "tools/list",
+        }) as response:
+            listed = json.loads(response.read())
+            self.assertEqual(listed["result"]["cacheScope"], "public")
+            self.assertEqual(listed["result"]["resultType"], "complete")
+            self.assertEqual(
+                listed["result"]["_meta"]["io.modelcontextprotocol/serverInfo"]["name"],
+                "mintbeacon",
+            )
+
+    def test_modern_tool_call_requires_matching_mcp_name(self):
+        meta = {
+            "io.modelcontextprotocol/protocolVersion": "2026-07-28",
+            "io.modelcontextprotocol/clientCapabilities": {},
+        }
+        with self.post({
+            "jsonrpc": "2.0", "id": 12, "method": "tools/call",
+            "params": {"_meta": meta, "name": "not-a-tool", "arguments": {}},
+        }, {
+            "MCP-Protocol-Version": "2026-07-28",
+            "Mcp-Method": "tools/call",
+            "Mcp-Name": "not-a-tool",
+        }) as response:
+            payload = json.loads(response.read())
+            self.assertEqual(payload["error"]["code"], -32602)
+
+    def test_modern_header_body_mismatch_is_rejected(self):
+        meta = {
+            "io.modelcontextprotocol/protocolVersion": "2026-07-28",
+            "io.modelcontextprotocol/clientCapabilities": {},
+        }
+        with self.assertRaises(urllib.error.HTTPError) as caught:
+            self.post({
+                "jsonrpc": "2.0", "id": 13, "method": "tools/list",
+                "params": {"_meta": meta},
+            }, {
+                "MCP-Protocol-Version": "2026-07-28",
+                "Mcp-Method": "tools/call",
+            })
+        self.assertEqual(caught.exception.code, 400)
+        error = json.loads(caught.exception.read())
+        self.assertEqual(error["error"]["code"], -32020)
 
     def test_notification_returns_202(self):
         with self.post({
