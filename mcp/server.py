@@ -15,9 +15,9 @@ Two operating modes for verify_mint
 1. Deployed contract (preferred): set MINTBEACON_ADDRESS (env) or pass
    --mintbeacon <address>. verify_mint then calls probeMint(target, checker)
    on the deployed MintBeacon contract and reports the on-chain verdict.
-2. Off-chain probe (current state — the contract is NOT deployed yet):
-   when no address is configured, verify_mint runs the same classification
-   directly against the target contract (code check, supply reads, free-lane
+2. Off-chain probe (fallback mode):
+   when no deployment address is configured, verify_mint runs the same
+   classification directly against the target contract (code check, supply reads, free-lane
    getters, price getters, value-0 eth_call probes of mint()/freeMint()/
    mint(uint256)/claim() with revert classification). The logic mirrors
    test/simulate_real_contracts.py and contracts/MintBeacon.sol, and the
@@ -559,6 +559,7 @@ def tool_verify_mint(args, mintbeacon):
         raise ValueError("contractAddress is required and must be a 0x address "
                          "(40 hex characters), e.g. "
                          "0xff2dac2389a6a9593209b6008d5ffa9e73aa19c2")
+    checker_was_provided = bool(args.get("checkerAddress"))
     checker = args.get("checkerAddress") or DEFAULT_CHECKER
     if not isinstance(checker, str) or not ADDR_RE.match(checker):
         raise ValueError("checkerAddress must be a 0x address (40 hex characters)")
@@ -579,6 +580,13 @@ def tool_verify_mint(args, mintbeacon):
         "tool": "verify_mint",
         "contractAddress": target,
         "checkerAddress": checker,
+        "checkerAddressProvided": checker_was_provided,
+        "checkerAddressNote": (
+            None if checker_was_provided else
+            "No checkerAddress was supplied. The legacy deployer-wallet default was used; "
+            "this result is not personalised to the MCP caller. Pass the actual user's or "
+            "agent's wallet address for a personalised result."
+        ),
         "verdict": verdict,
         "verdictCode": VERDICTS.index(verdict),
         "verdictMeaning": VERDICT_MEANING[verdict],
@@ -712,7 +720,9 @@ TOOLS = [
         "name": "verify_mint",
         "description": (
             "Verify whether a BSC contract looks like a FREE, gas-only Agent ID "
-            "mint for the checker address. Returns verdict (UNKNOWN/FREE/"
+            "mint for the supplied checker address. Always supply the actual user's or "
+            "agent's wallet; omission uses a legacy deployer-wallet default and is not "
+            "personalised to the MCP caller. Returns verdict (UNKNOWN/FREE/"
             "LIKELY_FREE/PAID), method, minted/maxSupply, and whether the "
             "checker holds an Agent ID. LIKELY_FREE means 'probably free — "
             "deep-check recommended', never a guarantee. Read-only: never "
@@ -728,9 +738,10 @@ TOOLS = [
                 },
                 "checkerAddress": {
                     "type": "string",
-                    "description": "Address the verdict is personalised for "
-                                   "(free-lane and price getters are read for "
-                                   "this address). Defaults to Tosin's wallet.",
+                    "description": "Address the verdict is personalised for. Always pass "
+                                   "the actual user's or agent's wallet for a personalised "
+                                   "result. Optional only for backward compatibility; omission "
+                                   "uses the deployer-wallet default and does not identify the caller.",
                 },
             },
             "required": ["contractAddress"],
