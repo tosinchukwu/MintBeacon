@@ -72,3 +72,4 @@ forge test             # 14 tests, no fork, no mainnet state
 ## License
 
 MIT — see `LICENSE`.
+© Tosinchukwu 2026
