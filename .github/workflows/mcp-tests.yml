@@ -21,3 +21,74 @@ jobs:
         run: python -m py_compile server.py http_server.py test_transports.py
       - name: Run offline MCP transport tests
         run: python -m unittest discover -s mcp -p 'test_*.py' -v
+      - name: Smoke-test the public Wispbyte MCP endpoint
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          python - <<'PY'
+          import json
+          import urllib.request
+
+          base = "https://mintbeacon-mcp.wisp.uno"
+          expected = {"mintbeacon_status", "verify_mint", "free_mints_feed"}
+
+          with urllib.request.urlopen(base + "/healthz", timeout=15) as response:
+              health = json.load(response)
+          assert health.get("ok") is True, health
+
+          def post(payload, headers):
+              request = urllib.request.Request(
+                  base + "/mcp",
+                  data=json.dumps(payload).encode(),
+                  headers={
+                      "Content-Type": "application/json",
+                      "Accept": "application/json, text/event-stream",
+                      **headers,
+                  },
+                  method="POST",
+              )
+              with urllib.request.urlopen(request, timeout=20) as response:
+                  return json.load(response)
+
+          legacy_headers = {"MCP-Protocol-Version": "2025-11-25"}
+          initialized = post({
+              "jsonrpc": "2.0", "id": 1, "method": "initialize",
+              "params": {
+                  "protocolVersion": "2025-11-25",
+                  "capabilities": {},
+                  "clientInfo": {"name": "mintbeacon-ci", "version": "1"},
+              },
+          }, legacy_headers)
+          assert initialized["result"]["protocolVersion"] == "2025-11-25", initialized
+
+          legacy_list = post(
+              {"jsonrpc": "2.0", "id": 2, "method": "tools/list"},
+              legacy_headers,
+          )
+          legacy_names = {tool["name"] for tool in legacy_list["result"]["tools"]}
+          assert legacy_names == expected, legacy_names
+
+          meta = {
+              "io.modelcontextprotocol/protocolVersion": "2026-07-28",
+              "io.modelcontextprotocol/clientCapabilities": {},
+          }
+          modern_headers = {
+              "MCP-Protocol-Version": "2026-07-28",
+              "Mcp-Method": "server/discover",
+          }
+          discovery = post({
+              "jsonrpc": "2.0", "id": 3, "method": "server/discover",
+              "params": {"_meta": meta},
+          }, modern_headers)
+          assert "2026-07-28" in discovery["result"]["supportedVersions"], discovery
+
+          modern_list = post({
+              "jsonrpc": "2.0", "id": 4, "method": "tools/list",
+              "params": {"_meta": meta},
+          }, {
+              "MCP-Protocol-Version": "2026-07-28",
+              "Mcp-Method": "tools/list",
+          })
+          modern_names = {tool["name"] for tool in modern_list["result"]["tools"]}
+          assert modern_names == expected, modern_names
+          print("Live MCP smoke test passed: health, legacy initialize/tools/list, modern discover/tools/list.")
+          PY
