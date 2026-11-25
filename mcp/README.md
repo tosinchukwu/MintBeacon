@@ -13,7 +13,7 @@ it does is read-only: `eth_call`, `eth_getCode`, `eth_estimateGas`.
 python3 mcp/server.py
 ```
 
-Optional: point it at the deployed MintBeacon contract (see below).
+The server defaults to the deployed MintBeacon contract. Set an override only when you want to use another deployment.
 
 ```bash
 MINTBEACON_ADDRESS=0x... python3 mcp/server.py
@@ -44,8 +44,7 @@ Adjust the path to where you checked out this repo:
 }
 ```
 
-Omit the `env` block (or leave `MINTBEACON_ADDRESS` empty) to run in
-off-chain probe mode. Any MCP client that speaks stdio JSON-RPC works —
+The deployed contract address is used by default; set `MINTBEACON_ADDRESS` only to override it. Any MCP client that speaks stdio JSON-RPC works —
 Claude Desktop, MCP Inspector (`npx @modelcontextprotocol/inspector`),
 or any agent host.
 
