@@ -36,9 +36,9 @@ The on-chain probe can only *suggest* free (LIKELY_FREE). The paid deep-check re
 **MintBeacon is deployed on BNB Smart Chain mainnet.**
 
 - **Website:** https://mintbeacon.vercel.app
-- **MCP endpoint (Streamable HTTP):** https://mintbeacon-mcp.wisp.uno/mcp
-- **MCP health check:** https://mintbeacon-mcp.wisp.uno/healthz
-- **Official MCP Registry:** `io.github.tosinchukwu/mintbeacon` (version `1.0.1`)
+- **MCP endpoint (Streamable HTTP):** https://mintbeacon-mcp.wisp.uno/mcp (currently returning HTTP 403; host reactivation required)
+- **MCP Registry listing:** `io.github.tosinchukwu/mintbeacon` version `1.0.1` (published)
+- **MCP health check:** https://mintbeacon-mcp.wisp.uno/healthz (currently HTTP 403)
 - **Contract:** `0x29f9AaBF15f681011334Ba131E6CBb884b39AF2B`
 - **Network:** BNB Smart Chain mainnet (chain ID 56)
 - **Agent ID registry:** `0x60B9262456dE011F7d15a54CdD8c48bAaa8B022F`
