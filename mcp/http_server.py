@@ -90,6 +90,8 @@ def _decode_mcp_name(value):
     # Plain header values must be visible ASCII (plus ordinary spaces).
     if any(ord(char) < 0x20 or ord(char) > 0x7e for char in value):
         return None
+    if value != value.strip():
+        return None
     if value.startswith("=?base64?") or value.endswith("?="):
         return None
     return value
