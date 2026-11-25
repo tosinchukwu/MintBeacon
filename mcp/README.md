@@ -66,16 +66,32 @@ on-chain (see BUILD_NOTE.md §15). The server defaults to this address; set
 
 ## Tools
 
+### `mintbeacon_status`
+
+Input: no arguments.
+
+Returns the live BSC chain ID, deployed MintBeacon address, Agent ID registry,
+source-verification/explorer links, and the on-chain `distinctAgentIdHolders`
+and `totalRecordedChecks` counters. This is read-only: calling it does not
+increment either counter and does not require a wallet.
+
 ### `verify_mint`
 
-Input: `{ "contractAddress": "0x...", "checkerAddress": "0x..." }`
-(`checkerAddress` optional, defaults to Tosin's wallet
-`0xF59BC28F2c942a69417652D9359602A755ECCC99`).
+Input: `{ "contractAddress": "0x...", "checkerAddress": "0x..." }`.
+
+`checkerAddress` remains optional for backward compatibility, but agents
+should **always pass the actual user's or agent's wallet address** when they
+want a personalised result. If omitted, the legacy deployer-wallet default
+`0xF59BC28F2c942a69417652D9359602A755ECCC99` is used; that does not identify
+the MCP caller and may not represent the person asking.
 
 Returns verdict + method + minted/maxSupply + Agent ID gate status
-(registry `balanceOf` for the checker: does this address hold an Agent ID?)
-+ whether the result came from the deployed contract or the off-chain probe
-+ a `probeLog` of what was observed.
+(registry `balanceOf` for the supplied checker) + whether the result came
+from the deployed contract or off-chain probe + a `probeLog` of observations.
+
+This is a read-only `eth_call`: it does **not** create a transaction and does
+**not** increment MintBeacon's on-chain counters. The optional recorded check
+is a separate action on the website and requires the user's own wallet approval.
 
 - Verdicts: `UNKNOWN` (0), `FREE` (1), `LIKELY_FREE` (2), `PAID` (3).
 - Methods, in contract enum order: `NONE`, `FREE_LANE_GETTER`,
@@ -97,6 +113,28 @@ Fetches `https://mints-bnb.pages.dev/projects.json` and returns the
 This is a curated feed, not a MintBeacon verification — run `verify_mint`
 on a contract before acting on it. If the fetch fails, or the feed has no
 `projects` list, it returns an MCP error saying so. It never invents a list.
+
+## Agent integration and discovery
+
+This repository currently provides an MCP **stdio** server, not a hosted
+remote HTTP MCP endpoint. An agent host must install/run the server locally
+(or in its own environment) using the configuration above. Do not submit a
+made-up hosted MCP URL to directories. A remotely callable endpoint is a
+separate deployment task; the server's tools and safety behavior should be
+kept transport-independent when that is added.
+
+For an agent workflow:
+
+1. Call `mintbeacon_status` to confirm the live BNB Chain deployment.
+2. Call `verify_mint` with the target contract and the actual user's/agent's
+   own `checkerAddress`.
+3. Explain the verdict and evidence; treat `LIKELY_FREE` as a hypothesis,
+   not a guarantee.
+4. Never claim that an MCP read-only verification counts toward hackathon
+   on-chain interaction metrics. Only successful recorded `checkMint`
+   transactions update those counters.
+5. If the user wants a recorded check, direct them to the website's wallet
+   flow. The MCP server itself never signs or sends transactions.
 
 ## Honest limits
 
@@ -158,5 +196,7 @@ as fallback). No mainnet paid lane until one route is confirmed working.
 - `free_mints_feed` (limit 3) → 3 projects, 46 `free_live` total
   (Worldygg Tree 20,282/99,999; AgentPad Pass 5,959/10,000; M3MO Genesis
   null/10,000).
+- `mintbeacon_status` → live chain/deployment metadata and on-chain counters.
+- `tools/list` exposes all three tools with read-only MCP annotations.
 - Bad address → JSON-RPC error `-32602`; unknown method → `-32601`;
   `MINTBEACON_ADDRESS` set to an address with no code → clean `isError`.
