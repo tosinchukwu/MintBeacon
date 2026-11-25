@@ -56,18 +56,13 @@ Owner = his Agentic Wallet, registry = Agent ID registry — verified live
 on-chain (see BUILD_NOTE.md §15). The server defaults to this address; set
 `MINTBEACON_ADDRESS` (or `--mintbeacon`) to override it.
 
-- **Unset (current state):** `verify_mint` runs the **off-chain probe**
-  directly against the target contract (code check, supply reads,
-  free-lane getters, price getters, value-0 `eth_call` probes of
-  `mint()` / `freeMint()` / `mint(uint256)` / `claim()` with revert
-  classification). The logic mirrors `test/simulate_real_contracts.py`
-  and `contracts/MintBeacon.sol`, and every result is labelled
-  `"off-chain probe (MintBeacon contract not yet deployed)"`.
-- **Set:** `verify_mint` calls `probeMint(target, checker)` on the
-  deployed contract instead, and reports `"deployed MintBeacon contract"`
-  as the source (plus `checkerCount` / `totalChecks` when readable).
-  If the configured address has no code on BSC, `verify_mint` returns a
-  clean MCP error telling you so — it does not silently fall back.
+- **Default (deployed):** `verify_mint` calls `probeMint(target, checker)` on
+  `0x29f9AaBF15f681011334Ba131E6CBb884b39AF2B` and reports the deployed
+  contract as the source. The default address is verified on BscScan.
+- **Override:** set `MINTBEACON_ADDRESS` or pass `--mintbeacon` to use another
+  deployment. If the configured contract cannot be reached, the tool reports
+  an MCP error; it does not silently fall back.
+- The off-chain classifier remains available in the backend fallback path.
 
 ## Tools
 
