@@ -139,15 +139,19 @@ to override the host, or `MCP_PORT` to change the local port. The MCP endpoint i
 
 ### Live deployment (Wispbyte)
 
-The current public Streamable HTTP endpoint is hosted on Wispbyte:
+The configured public Streamable HTTP endpoint is hosted on Wispbyte:
 
 - **MCP endpoint:** `https://mintbeacon-mcp.wisp.uno/mcp`
 - **Health check:** `https://mintbeacon-mcp.wisp.uno/healthz`
 - **Website:** `https://mintbeacon.vercel.app`
 
-The service is a remote, stateless MCP server. Use the exact `/mcp` URL in
-remote MCP clients. The health URL is for availability checks only; it is not
-the MCP transport endpoint.
+The MCP endpoint previously passed independent MCP Inspector tests. A fresh
+public health check from GitHub Actions on 2026-11-25 returned HTTP 403, so
+the Wispbyte host must be reactivated and rechecked before treating the remote
+endpoint as available to agents. The MCP Registry metadata is published, but
+a directory listing does not guarantee the endpoint is currently reachable.
+The health URL is for availability checks only; it is not the MCP transport
+endpoint.
 
 The Wispbyte launch wrapper sets `PORT=14831` and `MCP_HOST=0.0.0.0`.
 Set `MCP_ALLOWED_HOSTS=mintbeacon-mcp.wisp.uno` in that wrapper before
