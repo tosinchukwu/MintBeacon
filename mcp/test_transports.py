@@ -57,6 +57,21 @@ class StdioTransportTests(unittest.TestCase):
             self.assertTrue(tool["annotations"]["readOnlyHint"])
 
 
+    def test_invalid_method_and_params_are_rejected(self):
+        invalid_method = mcp_server.handle_request({
+            "jsonrpc": "2.0", "id": 1, "method": [], "params": {},
+        }, None)
+        self.assertEqual(invalid_method["error"]["code"], -32600)
+        invalid_params = mcp_server.handle_request({
+            "jsonrpc": "2.0", "id": 2, "method": "initialize", "params": [],
+        }, None)
+        self.assertEqual(invalid_params["error"]["code"], -32602)
+        invalid_arguments = mcp_server.handle_request({
+            "jsonrpc": "2.0", "id": 3, "method": "tools/call",
+            "params": {"name": "verify_mint", "arguments": []},
+        }, None)
+        self.assertEqual(invalid_arguments["error"]["code"], -32602)
+
     def test_initialize_negotiates_supported_legacy_versions(self):
         for requested, expected in (
             ("2025-11-25", "2025-11-25"),
