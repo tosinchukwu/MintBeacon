@@ -165,20 +165,35 @@ the hostname in sync with the deployed URL.
 - `MCP_MAX_BODY_BYTES`: maximum JSON request body (default 65,536 bytes).
 - `PORT` or `MCP_PORT`: HTTP listener port (default 8000).
 
-The endpoint is stateless: it does not issue MCP session IDs, persist session
-state, or support server-initiated SSE streams. POST requests to `/mcp`
-receive JSON responses; notifications receive HTTP 202. GET and DELETE on
-`/mcp` return 405 because this server does not offer SSE streams or sessions.
-This is a valid stateless Streamable HTTP pattern for request/response MCP
-clients. Clients must POST JSON-RPC requests with `Content-Type:
-application/json` and an `Accept` header containing `application/json`
-or `text/event-stream`.
+The endpoint is stateless and supports both protocol eras:
+
+- **Modern MCP `2026-07-28`:** `server/discover` plus per-request
+  `_meta`; no initialize handshake or session IDs. HTTP POSTs must include
+  `MCP-Protocol-Version`, `Mcp-Method`, and (for `tools/call`)
+  `Mcp-Name`, with the values validated against the JSON body.
+- **Legacy Streamable HTTP `2025-11-25`:** the `initialize` handshake is
+  supported, with stateless JSON responses and no issued session ID.
+
+POST requests to `/mcp` receive JSON responses; accepted notifications
+receive HTTP 202. GET and DELETE on `/mcp` return 405 because this server
+does not offer standalone SSE streams or sessions. This server does not
+implement the deprecated `2024-11-05` HTTP+SSE transport. Clients must POST
+JSON-RPC requests with `Content-Type: application/json` and an `Accept`
+header containing **both** `application/json` and `text/event-stream`.
 
 The HTTP transport applies a request-size limit, per-client in-memory rate
-limit, and Origin allowlist. The reverse proxy must overwrite
-`X-Forwarded-For`; otherwise a caller could spoof the address used for
-rate-limiting. Browser clients must use an allowed Origin. Direct agent
-clients generally do not send an Origin header.
+limit, Origin allowlist, and Host allowlist. Local HTTP runs bind to
+`127.0.0.1` by default and accept loopback Host values only. The Render
+blueprint configures the deployed hostname and the MintBeacon website Origin.
+The reverse proxy must overwrite `X-Forwarded-For`; otherwise a caller
+could spoof the address used for rate-limiting. Browser clients must use an
+allowed Origin. Direct agent clients generally do not send an Origin header.
+
+The local smoke tests run without contacting BSC:
+
+```bash
+python3 -m unittest discover -s mcp -p 'test_*.py'
+```
 
 ### Connect a remote MCP client
 
@@ -189,8 +204,9 @@ Use this remote MCP URL in an MCP client that supports Streamable HTTP:
 For example, an MCP client may accept a remote server entry with transport
 type `streamable-http` and that URL. The exact configuration syntax varies
 by host. Do not configure a remote URL until the Render service has actually
-been deployed and both `/healthz` and an MCP `initialize` request have been
-verified.
+been deployed and `/healthz`, a modern `server/discover` request, and
+`tools/list` have been verified. The legacy `initialize` flow is also
+covered by the offline tests.
 
 ### Local and remote behavior
 
