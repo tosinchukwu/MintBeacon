@@ -934,8 +934,15 @@ def handle_request(req, mintbeacon):
 
     if method == "initialize":
         params = req.get("params") or {}
+        requested_version = params.get("protocolVersion")
+        supported_legacy_versions = (LEGACY_PROTOCOL_VERSION, "2024-11-05")
+        negotiated_version = (
+            requested_version
+            if requested_version in supported_legacy_versions
+            else LEGACY_PROTOCOL_VERSION
+        )
         return {"jsonrpc": "2.0", "id": req_id, "result": {
-            "protocolVersion": params.get("protocolVersion", LEGACY_PROTOCOL_VERSION),
+            "protocolVersion": negotiated_version,
             "capabilities": {"tools": {}},
             "serverInfo": {"name": SERVER_NAME, "version": VERSION},
             "instructions": MINTBEACON_INSTRUCTIONS,
