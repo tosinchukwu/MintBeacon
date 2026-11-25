@@ -152,6 +152,24 @@ class StreamableHTTPTransportTests(unittest.TestCase):
             payload = json.loads(response.read())
             self.assertEqual(payload["error"]["code"], -32602)
 
+    def test_modern_mcp_name_mismatch_is_rejected(self):
+        meta = {
+            "io.modelcontextprotocol/protocolVersion": "2026-07-28",
+            "io.modelcontextprotocol/clientCapabilities": {},
+        }
+        with self.assertRaises(urllib.error.HTTPError) as caught:
+            self.post({
+                "jsonrpc": "2.0", "id": 14, "method": "tools/call",
+                "params": {"_meta": meta, "name": "verify_mint", "arguments": {}},
+            }, {
+                "MCP-Protocol-Version": "2026-07-28",
+                "Mcp-Method": "tools/call",
+                "Mcp-Name": "free_mints_feed",
+            })
+        self.assertEqual(caught.exception.code, 400)
+        error = json.loads(caught.exception.read())
+        self.assertEqual(error["error"]["code"], -32020)
+
     def test_modern_header_body_mismatch_is_rejected(self):
         meta = {
             "io.modelcontextprotocol/protocolVersion": "2026-07-28",
