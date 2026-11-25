@@ -70,7 +70,17 @@ details{margin-top:14px;border-top:1px solid #cbd9e8;padding-top:12px}summary{cu
 
   <label for="checkerInput">Checker address <span class="hint">(whose free lane is checked - defaults to the owner's wallet)</span></label>
   <input type="text" id="checkerInput" autocomplete="off" spellcheck="false">
-  <button id="connectBtn" class="small">Connect wallet (use my address as checker)</button>
+  <button id="connectBtn" class="small">Choose / connect wallet</button>
+  <div id="walletOptions" class="card" hidden aria-live="polite">
+    <b>Available wallets</b>
+    <div id="walletList" class="status">Looking for browser wallets…</div>
+  </div>
+  <div class="card">
+    <b>Using an AI agent wallet?</b>
+    <p class="hint">Binance Agentic Wallet and other agent-controlled wallets may not appear as browser extensions. Connect an agent wallet here only if it exposes a standard EIP-1193 / EIP-6963 browser provider. Otherwise, ask your trusted AI agent to execute the on-chain check using its own authorised wallet tools.</p>
+    <button id="copyAgentTaskBtn" class="small">Copy AI-agent transaction instructions</button>
+    <div class="status" id="agentTaskStatus"></div>
+  </div>
 
   <div>
     <button id="verifyBtn" class="primary">Verify - free probe</button>
@@ -559,62 +569,70 @@ async function doCheckOnchainPreview() {
   const mb = getMintBeaconAddress();
   const status = $("sendStatus");
   const pvWarn = $("pvWarn");
+  const provider = selectedWalletProvider || getDefaultWalletProvider();
   if (!mb) { status.textContent = "MintBeacon is not deployed yet - set the deployed address first."; status.className = "status error"; return; }
   if (!isAddress(target)) { status.textContent = "Enter a valid target contract address first (step 2)."; status.className = "status error"; return; }
-  if (!window.ethereum) { status.textContent = "No injected wallet found (window.ethereum). Open this page in a wallet browser (e.g. the Binance Wallet app browser) to record a check on-chain."; status.className = "status error"; return; }
+  if (!provider) { status.textContent = "No compatible browser wallet found. Choose an injected wallet, or use the AI-agent instructions below with your agent's authorised wallet skill."; status.className = "status error"; return; }
   try {
-    status.textContent = "Connecting wallet and building the preview…";
+    status.textContent = "Connecting selected wallet and checking Agent ID eligibility…";
     status.className = "status";
-    const accounts = await window.ethereum.request({ method: "eth_requestAccounts" });
-    const from = accounts[0];
+    const accounts = await provider.request({ method: "eth_requestAccounts" });
+    const from = accounts && accounts[0];
     if (!from) throw new Error("No account returned by the wallet.");
-    const chainId = await window.ethereum.request({ method: "eth_chainId" });
+    const chainId = await provider.request({ method: "eth_chainId" });
     if (chainId !== CHAIN_ID_HEX) {
       try {
-        await window.ethereum.request({ method: "wallet_switchEthereumChain", params: [{ chainId: CHAIN_ID_HEX }] });
+        await provider.request({ method: "wallet_switchEthereumChain", params: [{ chainId: CHAIN_ID_HEX }] });
       } catch (e) {
-        status.textContent = "Please switch your wallet to BSC mainnet (chain id 56) and try again.";
-        status.className = "status error";
-        return;
+        throw new Error("Please switch the selected wallet to BNB Smart Chain mainnet (chain id 56), then try again.");
       }
     }
-    const data = encodeCheckMint(target);
     const gate = await getAgentIdBalance(from);
+    const data = encodeCheckMint(target);
+    $("pvTo").textContent = mb;
+    $("pvTarget").textContent = target;
+    $("pvData").textContent = data;
+    $("pvFrom").textContent = from;
+    $("pvGas").textContent = "Not estimated";
+    $("pvGasPrice").textContent = "Not estimated";
+    $("pvCost").textContent = "Not estimated";
+    pendingTx = null;
+    if (gate === 0n) {
+      pvWarn.textContent = "This address does not hold an Agent ID (registry balanceOf = 0). The contract will reject this transaction. No gas estimate or transaction request was made. Switch to the Binance Agentic Wallet / another wallet that actually holds your Agent ID.";
+      pvWarn.className = "status error";
+      $("confirmSendBtn").disabled = true;
+      $("previewCard").hidden = false;
+      status.textContent = "Wallet connected, but this address is not eligible to record a check.";
+      return;
+    }
     const gasHex = await rpcCall("eth_estimateGas", [{ from: from, to: mb, data: data, value: "0x0" }, "latest"]);
     const gasPriceHex = await rpcCall("eth_gasPrice", []);
     const gas = BigInt(gasHex), gasPrice = BigInt(gasPriceHex);
     pendingTx = { from: from, to: mb, data: data, value: "0x0", gas: gasHex };
-    $("pvTo").textContent = mb;
-    $("pvTarget").textContent = target;
-    $("pvData").textContent = data;
     $("pvGas").textContent = " " + gas.toString() + " gas";
     $("pvGasPrice").textContent = " " + fmtGwei(gasPrice);
     $("pvCost").textContent = " " + fmtBnb(gas * gasPrice) + " (gas " + gas.toString() + " × " + fmtGwei(gasPrice) + ")";
-    $("pvFrom").textContent = from;
-    if (gate === 0n) {
-      pvWarn.textContent = "Warning: the connected wallet (" + from + ") holds NO Agent ID, so checkMint will revert (NotAgentHolder) and the gas would be wasted. Connect a wallet that holds an Agent ID.";
-      pvWarn.className = "status error";
-      $("confirmSendBtn").disabled = true;
-    } else {
-      pvWarn.textContent = "Connected wallet holds an Agent ID. Review the preview above, then confirm - your wallet will ask you to approve the transaction.";
-      pvWarn.className = "status";
-      $("confirmSendBtn").disabled = false;
-    }
+    pvWarn.textContent = "Connected wallet holds an Agent ID. Review the transaction carefully. Nothing is sent until you press Confirm & send and approve it in your wallet.";
+    pvWarn.className = "status";
+    $("confirmSendBtn").disabled = false;
     $("previewCard").hidden = false;
     status.textContent = "Preview ready - review it above before sending.";
   } catch (e) {
-    status.textContent = "Could not build the preview: " + e.message;
+    pendingTx = null;
+    status.textContent = "Could not build the preview: " + (e && e.message ? e.message : e);
     status.className = "status error";
   }
 }
 async function doSendChecked() {
   const status = $("sendStatus");
-  if (!pendingTx) return;
+  const provider = selectedWalletProvider || getDefaultWalletProvider();
+  if (!pendingTx) { status.textContent = "No eligible transaction preview. Connect a wallet that holds an Agent ID first."; status.className = "status error"; return; }
+  if (!provider) { status.textContent = "The selected wallet provider is no longer available. Reconnect your wallet."; status.className = "status error"; return; }
   try {
     $("confirmSendBtn").disabled = true;
     status.textContent = "Waiting for your wallet approval - check your wallet app…";
     status.className = "status";
-    const txHash = await window.ethereum.request({ method: "eth_sendTransaction", params: [pendingTx] });
+    const txHash = await provider.request({ method: "eth_sendTransaction", params: [pendingTx] });
     status.innerHTML = "Sent. Transaction: <a class='mono' href='" + BSCSCAN_TX + txHash + "' target='_blank' rel='noopener'>" + txHash + "</a> - wait for confirmation, then re-run Verify to see the recorded verdict.";
     status.className = "status";
     $("previewCard").hidden = true;
@@ -626,18 +644,101 @@ async function doSendChecked() {
     $("confirmSendBtn").disabled = false;
   }
 }
-async function doConnect() {
+/* EIP-6963 discovers multiple injected wallets without assuming that
+   window.ethereum belongs to a particular wallet. Legacy injection remains supported. */
+const discoveredWallets = new Map();
+let selectedWalletProvider = null;
+let selectedWalletName = "";
+function announceWallet(event) {
+  const detail = event && event.detail;
+  if (!detail || !detail.provider || !detail.info || !detail.info.uuid) return;
+  discoveredWallets.set(detail.info.uuid, { provider: detail.provider, info: detail.info });
+  renderWalletOptions();
+}
+function discoverWallets() {
+  window.addEventListener("eip6963:announceProvider", announceWallet);
+  window.dispatchEvent(new Event("eip6963:requestProvider"));
+  setTimeout(renderWalletOptions, 400);
+}
+function getDefaultWalletProvider() {
+  if (selectedWalletProvider) return selectedWalletProvider;
+  const list = Array.from(discoveredWallets.values());
+  if (list.length === 1) return list[0].provider;
+  return window.ethereum || null;
+}
+function renderWalletOptions() {
+  const wrap = $("walletOptions"), list = $("walletList");
+  if (!wrap || !list) return;
+  const entries = Array.from(discoveredWallets.entries());
+  if (!entries.length) {
+    list.textContent = window.ethereum
+      ? "A legacy injected wallet is available. Tap Connect to use it. For multiple wallets, use a browser supporting EIP-6963."
+      : "No injected browser wallet announced yet. Open in a compatible wallet browser, or use the AI-agent instructions below.";
+    return;
+  }
+  list.innerHTML = "";
+  entries.forEach(function ([uuid, item]) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "small";
+    btn.textContent = (item.info.name || item.info.rdns || "EVM wallet") + (selectedWalletName === item.info.name ? " ✓" : "");
+    btn.addEventListener("click", async function () {
+      selectedWalletProvider = item.provider;
+      selectedWalletName = item.info.name || item.info.rdns || "EVM wallet";
+      await connectWithProvider(item.provider, selectedWalletName);
+    });
+    list.appendChild(btn);
+  });
+}
+async function connectWithProvider(provider, name) {
   const status = $("verifyStatus");
-  if (!window.ethereum) { status.textContent = "No injected wallet found in this browser."; status.className = "status error"; return; }
   try {
-    const accounts = await window.ethereum.request({ method: "eth_requestAccounts" });
+    const accounts = await provider.request({ method: "eth_requestAccounts" });
     if (accounts && accounts[0]) {
+      selectedWalletProvider = provider;
+      selectedWalletName = name || "Browser wallet";
       $("checkerInput").value = accounts[0];
-      status.textContent = "Connected: " + accounts[0] + " (now the checker address).";
+      status.textContent = "Connected " + selectedWalletName + ": " + accounts[0] + ".";
       status.className = "status";
     }
   } catch (e) {
-    status.textContent = "Wallet connection was not approved.";
+    status.textContent = "Wallet connection was not approved: " + (e && e.message ? e.message : e);
+    status.className = "status error";
+  }
+}
+async function doConnect() {
+  $("walletOptions").hidden = false;
+  const entries = Array.from(discoveredWallets.values());
+  if (entries.length > 1) {
+    renderWalletOptions();
+    $("walletList").insertAdjacentText("afterbegin", "Select a wallet: ");
+    return;
+  }
+  const provider = entries.length === 1 ? entries[0].provider : (window.ethereum || null);
+  const name = entries.length === 1 ? (entries[0].info.name || "Browser wallet") : "Injected wallet";
+  if (!provider) {
+    $("verifyStatus").textContent = "No browser wallet provider found. Use the AI-agent instructions below with an authorised agent wallet.";
+    $("verifyStatus").className = "status error";
+    return;
+  }
+  await connectWithProvider(provider, name);
+}
+function agentTransactionInstructions() {
+  const target = $("targetInput").value.trim();
+  const mb = getMintBeaconAddress();
+  if (!isAddress(target)) throw new Error("Enter a valid target contract address first.");
+  if (!mb) throw new Error("MintBeacon contract address is missing.");
+  return "Use my already-authorised BNB Smart Chain (chain ID 56) AI-agent wallet to check MintBeacon. First verify the active wallet address by calling balanceOf(address) on Agent ID registry 0x60B9262456dE011F7d15a54CdD8c48bAaa8B022F. If balanceOf is zero, STOP and tell me this wallet is not eligible; do not send a transaction. If balanceOf is greater than zero, prepare an external contract call to " + mb + " using function checkMint(address) with argument " + target + " (calldata " + encodeCheckMint(target) + "), value 0 BNB. Show the chain, wallet address, destination, function, argument, estimated gas and fee before execution. Execute only through the wallet's authorised contract-call capability and its configured security controls. Never ask for or expose seed phrases or private keys. Do not use a third-party website QR code to pair Binance Agentic Wallet.";
+}
+async function copyAgentTask() {
+  const status = $("agentTaskStatus");
+  try {
+    const task = agentTransactionInstructions();
+    await navigator.clipboard.writeText(task);
+    status.textContent = "Copied. Paste this into your trusted AI agent that has its wallet skill enabled.";
+    status.className = "status";
+  } catch (e) {
+    status.textContent = "Could not copy: " + e.message;
     status.className = "status error";
   }
 }
@@ -661,6 +762,8 @@ function init() {
   });
   $("verifyBtn").addEventListener("click", doVerify);
   $("connectBtn").addEventListener("click", doConnect);
+  $("copyAgentTaskBtn").addEventListener("click", copyAgentTask);
+  discoverWallets();
   $("checkOnchainBtn").addEventListener("click", doCheckOnchainPreview);
   $("confirmSendBtn").addEventListener("click", doSendChecked);
   $("cancelPreviewBtn").addEventListener("click", function () {
