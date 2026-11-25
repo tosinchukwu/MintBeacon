@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
 """MintBeacon MCP server — free-mint verifier for agents on BNB Smart Chain.
 
-Exposes two tools over MCP (JSON-RPC 2.0, newline-delimited, stdio):
+Exposes three tools over MCP (JSON-RPC 2.0). This module is the local stdio
+transport; mcp/http_server.py reuses the same request handler for remote
+Streamable HTTP:
 
-  * verify_mint     — classify a contract as FREE / LIKELY_FREE / PAID / UNKNOWN
-  * free_mints_feed — list currently free, live mints from mints-bnb.pages.dev
+  * mintbeacon_status — inspect the deployed contract and on-chain counters
+  * verify_mint       — classify a contract as FREE / LIKELY_FREE / PAID / UNKNOWN
+  * free_mints_feed   — list currently free, live mints from mints-bnb.pages.dev
 
 Standard library only (no pip dependencies), so it runs anywhere Python 3
 is installed. It NEVER signs, NEVER sends transactions and NEVER holds keys:
@@ -15,9 +18,9 @@ Two operating modes for verify_mint
 1. Deployed contract (preferred): set MINTBEACON_ADDRESS (env) or pass
    --mintbeacon <address>. verify_mint then calls probeMint(target, checker)
    on the deployed MintBeacon contract and reports the on-chain verdict.
-2. Off-chain probe (current state — the contract is NOT deployed yet):
-   when no address is configured, verify_mint runs the same classification
-   directly against the target contract (code check, supply reads, free-lane
+2. Off-chain probe (fallback mode):
+   when no deployment address is configured, verify_mint runs the same
+   classification directly against the target contract (code check, supply reads, free-lane
    getters, price getters, value-0 eth_call probes of mint()/freeMint()/
    mint(uint256)/claim() with revert classification). The logic mirrors
    test/simulate_real_contracts.py and contracts/MintBeacon.sol, and the
@@ -63,7 +66,7 @@ import urllib.error
 import urllib.request
 from datetime import datetime, timezone
 
-VERSION = "0.1.0"
+VERSION = "0.2.0"
 SERVER_NAME = "mintbeacon"
 
 # ---------------------------------------------------------------------------
@@ -559,6 +562,7 @@ def tool_verify_mint(args, mintbeacon):
         raise ValueError("contractAddress is required and must be a 0x address "
                          "(40 hex characters), e.g. "
                          "0xff2dac2389a6a9593209b6008d5ffa9e73aa19c2")
+    checker_was_provided = bool(args.get("checkerAddress"))
     checker = args.get("checkerAddress") or DEFAULT_CHECKER
     if not isinstance(checker, str) or not ADDR_RE.match(checker):
         raise ValueError("checkerAddress must be a 0x address (40 hex characters)")
@@ -579,6 +583,13 @@ def tool_verify_mint(args, mintbeacon):
         "tool": "verify_mint",
         "contractAddress": target,
         "checkerAddress": checker,
+        "checkerAddressProvided": checker_was_provided,
+        "checkerAddressNote": (
+            None if checker_was_provided else
+            "No checkerAddress was supplied. The legacy deployer-wallet default was used; "
+            "this result is not personalised to the MCP caller. Pass the actual user's or "
+            "agent's wallet address for a personalised result."
+        ),
         "verdict": verdict,
         "verdictCode": VERDICTS.index(verdict),
         "verdictMeaning": VERDICT_MEANING[verdict],
@@ -600,6 +611,54 @@ def tool_verify_mint(args, mintbeacon):
     }
     result.update(extra)
     return result
+
+
+def tool_mintbeacon_status(mintbeacon):
+    """Return live BSC deployment metadata and on-chain usage counters."""
+    if not mintbeacon:
+        raise ToolError("MintBeacon deployment is not configured")
+    code = rpc("eth_getCode", [mintbeacon, "latest"])
+    if code in ("0x", "", None):
+        raise ToolError(f"MintBeacon address {mintbeacon} has no deployed code on BSC")
+    chain_hex = rpc("eth_chainId", [])
+    try:
+        chain_id = int(chain_hex, 16)
+    except (TypeError, ValueError):
+        raise ToolError(f"BSC RPC returned an invalid chain ID: {chain_hex!r}")
+    registry_code = rpc("eth_getCode", [REGISTRY, "latest"])
+    ok_holders, holders = try_uint(mintbeacon, enc(SEL["checkerCount"]))
+    ok_checks, checks = try_uint(mintbeacon, enc(SEL["totalChecks"]))
+    return {
+        "tool": "mintbeacon_status",
+        "network": "BNB Smart Chain Mainnet" if chain_id == 56 else "Unexpected EVM network",
+        "chainId": chain_id,
+        "expectedChainId": 56,
+        "networkMatchesBscMainnet": chain_id == 56,
+        "contractAddress": mintbeacon,
+        "contractCodePresent": True,
+        "contractSourceVerification": "verified on BscScan",
+        "contractExplorerUrl": f"https://bscscan.com/address/{mintbeacon}",
+        "websiteUrl": "https://mintbeacon.vercel.app",
+        "agentIdRegistry": REGISTRY,
+        "agentIdRegistryCodePresent": registry_code not in ("0x", "", None),
+        "distinctAgentIdHolders": holders if ok_holders else None,
+        "totalRecordedChecks": checks if ok_checks else None,
+        "counterDefinitions": {
+            "distinctAgentIdHolders": (
+                "Unique Agent ID-holding addresses that have successfully recorded "
+                "at least one on-chain check. Repeated checks by one address count once."
+            ),
+            "totalRecordedChecks": (
+                "Total successful on-chain checkMint transactions. Read-only MCP "
+                "verification calls do not increment this counter."
+            ),
+        },
+        "mcpTransactionPolicy": (
+            "All MCP tools are read-only. They never sign or send transactions. "
+            "The website's optional on-chain check requires the user's own wallet approval."
+        ),
+        "checkedAt": datetime.now(timezone.utc).isoformat(),
+    }
 
 
 def tool_free_mints_feed(args):
@@ -644,10 +703,29 @@ def tool_free_mints_feed(args):
 
 TOOLS = [
     {
+        "name": "mintbeacon_status",
+        "description": (
+            "Inspect the live MintBeacon deployment on BNB Smart Chain: chain ID, "
+            "contract address, Agent ID registry, distinct Agent ID holder count and "
+            "total successful on-chain checks. This is read-only and does not increment "
+            "either counter. No wallet address is required."
+        ),
+        "inputSchema": {"type": "object", "properties": {}, "required": []},
+        "annotations": {
+            "title": "MintBeacon deployment status",
+            "readOnlyHint": True,
+            "destructiveHint": False,
+            "idempotentHint": True,
+            "openWorldHint": True,
+        },
+    },
+    {
         "name": "verify_mint",
         "description": (
             "Verify whether a BSC contract looks like a FREE, gas-only Agent ID "
-            "mint for the checker address. Returns verdict (UNKNOWN/FREE/"
+            "mint for the supplied checker address. Always supply the actual user's or "
+            "agent's wallet; omission uses a legacy deployer-wallet default and is not "
+            "personalised to the MCP caller. Returns verdict (UNKNOWN/FREE/"
             "LIKELY_FREE/PAID), method, minted/maxSupply, and whether the "
             "checker holds an Agent ID. LIKELY_FREE means 'probably free — "
             "deep-check recommended', never a guarantee. Read-only: never "
@@ -663,12 +741,20 @@ TOOLS = [
                 },
                 "checkerAddress": {
                     "type": "string",
-                    "description": "Address the verdict is personalised for "
-                                   "(free-lane and price getters are read for "
-                                   "this address). Defaults to Tosin's wallet.",
+                    "description": "Address the verdict is personalised for. Always pass "
+                                   "the actual user's or agent's wallet for a personalised "
+                                   "result. Optional only for backward compatibility; omission "
+                                   "uses the deployer-wallet default and does not identify the caller.",
                 },
             },
             "required": ["contractAddress"],
+        },
+        "annotations": {
+            "title": "Verify a BNB Chain mint",
+            "readOnlyHint": True,
+            "destructiveHint": False,
+            "idempotentHint": True,
+            "openWorldHint": True,
         },
     },
     {
@@ -690,6 +776,13 @@ TOOLS = [
                 },
             },
             "required": [],
+        },
+        "annotations": {
+            "title": "List live free mints",
+            "readOnlyHint": True,
+            "destructiveHint": False,
+            "idempotentHint": True,
+            "openWorldHint": True,
         },
     },
 ]
@@ -713,6 +806,119 @@ def tool_error_text(message):
         {"error": message}, indent=2)}], "isError": True}
 
 
+MODERN_PROTOCOL_VERSION = "2026-07-28"
+LEGACY_PROTOCOL_VERSION = "2025-11-25"
+SERVER_INFO_META_KEY = "io.modelcontextprotocol/serverInfo"
+PROTOCOL_VERSION_META_KEY = "io.modelcontextprotocol/protocolVersion"
+CLIENT_CAPABILITIES_META_KEY = "io.modelcontextprotocol/clientCapabilities"
+MINTBEACON_INSTRUCTIONS = (
+    "MintBeacon is a read-only BNB Smart Chain mainnet mint verifier. "
+    "Call mintbeacon_status to inspect the live deployment and counters. "
+    "Call verify_mint with the target contractAddress and, whenever possible, "
+    "the actual user's or agent's own checkerAddress; if omitted, the legacy "
+    "deployer-wallet default is used and the result is not personalised to the caller. "
+    "verify_mint uses eth_call and does not create a transaction or increment counters. "
+    "The separate website offers an optional user-approved on-chain check; this MCP "
+    "server never signs or sends transactions."
+)
+
+
+def _modern_result(result):
+    """Add required 2026-07-28 response metadata to a successful result."""
+    if not isinstance(result, dict):
+        result = {}
+    result.setdefault("resultType", "complete")
+    result["_meta"] = {SERVER_INFO_META_KEY: {"name": SERVER_NAME, "version": VERSION}}
+    return result
+
+
+def _handle_modern_request(req, mintbeacon):
+    params = req.get("params") or {}
+    if not isinstance(params, dict):
+        return err_result(req.get("id"), -32602, "params must be an object")
+    meta = params.get("_meta")
+    if not isinstance(meta, dict):
+        return err_result(req.get("id"), -32602, "modern MCP requests require params._meta")
+    requested = meta.get(PROTOCOL_VERSION_META_KEY)
+    if requested != MODERN_PROTOCOL_VERSION:
+        return {
+            "jsonrpc": "2.0", "id": req.get("id"),
+            "error": {
+                "code": -32022,
+                "message": "Unsupported protocol version",
+                "data": {
+                    "supported": [MODERN_PROTOCOL_VERSION, LEGACY_PROTOCOL_VERSION],
+                    "requested": requested,
+                },
+            },
+        }
+    capabilities = meta.get(CLIENT_CAPABILITIES_META_KEY)
+    if not isinstance(capabilities, dict):
+        return err_result(req.get("id"), -32602,
+                          "params._meta.io.modelcontextprotocol/clientCapabilities must be an object")
+
+    method = req.get("method", "")
+    req_id = req.get("id")
+    if method == "server/discover":
+        return {"jsonrpc": "2.0", "id": req_id, "result": {
+            "resultType": "complete",
+            "supportedVersions": [MODERN_PROTOCOL_VERSION, LEGACY_PROTOCOL_VERSION],
+            "capabilities": {"tools": {}},
+            "_meta": {SERVER_INFO_META_KEY: {"name": SERVER_NAME, "version": VERSION}},
+            "instructions": MINTBEACON_INSTRUCTIONS,
+            "ttlMs": 60000,
+            "cacheScope": "public",
+        }}
+
+    response = None
+    if method == "tools/list":
+        response = {"jsonrpc": "2.0", "id": req_id, "result": {
+            "tools": TOOLS,
+            "resultType": "complete",
+            "ttlMs": 60000,
+            "cacheScope": "public",
+        }}
+    elif method == "tools/call":
+        response = _handle_tool_call(req, mintbeacon)
+    else:
+        return err_result(req_id, -32601, f"method not found: {method}")
+
+    if response is not None and "result" in response:
+        response["result"] = _modern_result(response["result"])
+    return response
+
+
+def _handle_tool_call(req, mintbeacon):
+    """Shared tools/call implementation for legacy and modern MCP requests."""
+    params = req.get("params") or {}
+    req_id = req.get("id")
+    if not isinstance(params, dict):
+        return err_result(req_id, -32602, "params must be an object")
+    name = params.get("name")
+    args = params.get("arguments") or {}
+    if not isinstance(args, dict):
+        return err_result(req_id, -32602, "tool arguments must be an object")
+    if name not in ("mintbeacon_status", "verify_mint", "free_mints_feed"):
+        return err_result(req_id, -32602, f"unknown tool: {name!r}")
+    try:
+        if name == "mintbeacon_status":
+            result = tool_mintbeacon_status(mintbeacon)
+        elif name == "verify_mint":
+            result = tool_verify_mint(args, mintbeacon)
+        else:
+            result = tool_free_mints_feed(args)
+    except ValueError as e:
+        return err_result(req_id, -32602, str(e))
+    except ToolError as e:
+        return {"jsonrpc": "2.0", "id": req_id, "result": tool_error_text(str(e))}
+    except Exception as e:
+        return {"jsonrpc": "2.0", "id": req_id,
+                "result": tool_error_text(f"tool {name} failed: {e}")}
+    return {"jsonrpc": "2.0", "id": req_id, "result": {
+        "content": [{"type": "text", "text": json.dumps(result, indent=2)}]
+    }}
+
+
 def handle_request(req, mintbeacon):
     """Returns a response object, or None for notifications (no reply)."""
     if not isinstance(req, dict) or req.get("jsonrpc") != "2.0":
@@ -720,16 +926,36 @@ def handle_request(req, mintbeacon):
                           -32600, "invalid JSON-RPC 2.0 request")
     method = req.get("method", "")
     req_id = req.get("id")
+    if not isinstance(method, str) or not method:
+        return err_result(req_id, -32600, "method must be a non-empty string")
     is_notification = "id" not in req or req_id is None
+    params = req.get("params", {})
+    if not isinstance(params, dict):
+        return err_result(req_id, -32602, "params must be an object")
+    request_meta = params.get("_meta") if isinstance(params, dict) else None
+    if isinstance(request_meta, dict) and (
+        PROTOCOL_VERSION_META_KEY in request_meta
+        or CLIENT_CAPABILITIES_META_KEY in request_meta
+        or method == "server/discover"
+    ):
+        return _handle_modern_request(req, mintbeacon)
     if method.startswith("notifications/"):
         return None  # e.g. notifications/initialized — no reply
 
     if method == "initialize":
         params = req.get("params") or {}
+        requested_version = params.get("protocolVersion")
+        supported_legacy_versions = (LEGACY_PROTOCOL_VERSION, "2024-11-05")
+        negotiated_version = (
+            requested_version
+            if requested_version in supported_legacy_versions
+            else LEGACY_PROTOCOL_VERSION
+        )
         return {"jsonrpc": "2.0", "id": req_id, "result": {
-            "protocolVersion": params.get("protocolVersion", "2024-11-05"),
+            "protocolVersion": negotiated_version,
             "capabilities": {"tools": {}},
             "serverInfo": {"name": SERVER_NAME, "version": VERSION},
+            "instructions": MINTBEACON_INSTRUCTIONS,
         }}
     if method == "ping":
         return {"jsonrpc": "2.0", "id": req_id, "result": {}}
@@ -737,32 +963,9 @@ def handle_request(req, mintbeacon):
         return {"jsonrpc": "2.0", "id": req_id,
                 "result": {"tools": TOOLS}}
     if method == "tools/call":
-        params = req.get("params") or {}
-        name = params.get("name")
-        args = params.get("arguments") or {}
-        if name not in ("verify_mint", "free_mints_feed"):
-            return err_result(req_id, -32602, f"unknown tool: {name!r}")
-        try:
-            if name == "verify_mint":
-                result = tool_verify_mint(args, mintbeacon)
-            else:
-                result = tool_free_mints_feed(args)
-        except ValueError as e:
-            return err_result(req_id, -32602, str(e))
-        except ToolError as e:
-            if is_notification:
-                return None
-            return {"jsonrpc": "2.0", "id": req_id, "result": tool_error_text(str(e))}
-        except Exception as e:
-            if is_notification:
-                return None
-            return {"jsonrpc": "2.0", "id": req_id,
-                    "result": tool_error_text(f"tool {name} failed: {e}")}
         if is_notification:
             return None
-        return {"jsonrpc": "2.0", "id": req_id, "result": {
-            "content": [{"type": "text",
-                         "text": json.dumps(result, indent=2)}]}}
+        return _handle_tool_call(req, mintbeacon)
     return err_result(req_id, -32601, f"method not found: {method}")
 
 

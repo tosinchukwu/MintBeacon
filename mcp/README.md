@@ -1,19 +1,25 @@
 # MintBeacon MCP server
 
 A free-mint verifier for AI agents on BNB Smart Chain, exposed over MCP
-(JSON-RPC 2.0, newline-delimited, stdio). Python 3 standard library only —
-no pip dependencies, so it runs anywhere Python 3 is installed.
+(JSON-RPC 2.0) through **local stdio** and **remote Streamable HTTP**.
+Python 3 standard library only — no pip dependencies.
 
 It never signs, never sends transactions, and never holds keys. Everything
 it does is read-only: `eth_call`, `eth_getCode`, `eth_estimateGas`.
 
-## Run it
+## Local MCP: stdio
+
+Run the local server from the repository root:
 
 ```bash
 python3 mcp/server.py
 ```
 
-The server defaults to the deployed MintBeacon contract. Set an override only when you want to use another deployment.
+The stdio transport is unchanged and remains the simplest option for desktop
+agent hosts. It reads newline-delimited JSON-RPC from stdin and writes
+responses to stdout; diagnostic messages go to stderr. The server defaults
+to the deployed MintBeacon contract. Set an override only when you want to
+use another deployment.
 
 ```bash
 MINTBEACON_ADDRESS=0x... python3 mcp/server.py
@@ -44,9 +50,8 @@ Adjust the path to where you checked out this repo:
 }
 ```
 
-The deployed contract address is used by default; set `MINTBEACON_ADDRESS` only to override it. Any MCP client that speaks stdio JSON-RPC works —
-Claude Desktop, MCP Inspector (`npx @modelcontextprotocol/inspector`),
-or any agent host.
+The deployed contract address is used by default; set `MINTBEACON_ADDRESS` only to override it. Any MCP client that speaks stdio JSON-RPC works — Claude Desktop, MCP
+Inspector (`npx @modelcontextprotocol/inspector`), or another local agent host.
 
 ## `MINTBEACON_ADDRESS` — deployment status
 
@@ -66,16 +71,32 @@ on-chain (see BUILD_NOTE.md §15). The server defaults to this address; set
 
 ## Tools
 
+### `mintbeacon_status`
+
+Input: no arguments.
+
+Returns the live BSC chain ID, deployed MintBeacon address, Agent ID registry,
+source-verification/explorer links, and the on-chain `distinctAgentIdHolders`
+and `totalRecordedChecks` counters. This is read-only: calling it does not
+increment either counter and does not require a wallet.
+
 ### `verify_mint`
 
-Input: `{ "contractAddress": "0x...", "checkerAddress": "0x..." }`
-(`checkerAddress` optional, defaults to Tosin's wallet
-`0xF59BC28F2c942a69417652D9359602A755ECCC99`).
+Input: `{ "contractAddress": "0x...", "checkerAddress": "0x..." }`.
+
+`checkerAddress` remains optional for backward compatibility, but agents
+should **always pass the actual user's or agent's wallet address** when they
+want a personalised result. If omitted, the legacy deployer-wallet default
+`0xF59BC28F2c942a69417652D9359602A755ECCC99` is used; that does not identify
+the MCP caller and may not represent the person asking.
 
 Returns verdict + method + minted/maxSupply + Agent ID gate status
-(registry `balanceOf` for the checker: does this address hold an Agent ID?)
-+ whether the result came from the deployed contract or the off-chain probe
-+ a `probeLog` of what was observed.
+(registry `balanceOf` for the supplied checker) + whether the result came
+from the deployed contract or off-chain probe + a `probeLog` of observations.
+
+This is a read-only `eth_call`: it does **not** create a transaction and does
+**not** increment MintBeacon's on-chain counters. The optional recorded check
+is a separate action on the website and requires the user's own wallet approval.
 
 - Verdicts: `UNKNOWN` (0), `FREE` (1), `LIKELY_FREE` (2), `PAID` (3).
 - Methods, in contract enum order: `NONE`, `FREE_LANE_GETTER`,
@@ -97,6 +118,146 @@ Fetches `https://mints-bnb.pages.dev/projects.json` and returns the
 This is a curated feed, not a MintBeacon verification — run `verify_mint`
 on a contract before acting on it. If the fetch fails, or the feed has no
 `projects` list, it returns an MCP error saying so. It never invents a list.
+
+## Remote MCP: Streamable HTTP
+
+The remote transport is implemented in `mcp/http_server.py`. It reuses the
+same `handle_request` function and the same three tools as the stdio server;
+it does not fork or duplicate the verification logic.
+
+Run locally:
+
+```bash
+cd mcp
+python3 http_server.py
+```
+
+The default local listener is `127.0.0.1:8000`. On hosting platforms,
+`PORT` automatically switches the bind address to `0.0.0.0`. Set `MCP_HOST`
+to override the host, or `MCP_PORT` to change the local port. The MCP endpoint is
+`http://localhost:8000/mcp`; health check is `/healthz`.
+
+### Live deployment (Wispbyte)
+
+The current public Streamable HTTP endpoint is hosted on Wispbyte:
+
+- **MCP endpoint:** `https://mintbeacon-mcp.wisp.uno/mcp`
+- **Health check:** `https://mintbeacon-mcp.wisp.uno/healthz`
+- **Website:** `https://mintbeacon.vercel.app`
+
+The service is a remote, stateless MCP server. Use the exact `/mcp` URL in
+remote MCP clients. The health URL is for availability checks only; it is not
+the MCP transport endpoint.
+
+The Wispbyte launch wrapper sets `PORT=14831` and `MCP_HOST=0.0.0.0`.
+Set `MCP_ALLOWED_HOSTS=mintbeacon-mcp.wisp.uno` in that wrapper before
+restarting the service so Host validation is enabled. Keep the browser Origin
+allowlist restricted to `https://mintbeacon.vercel.app`. Do not set
+`MCP_ALLOWED_HOSTS` to an empty value in production because an empty value
+disables Host filtering.
+
+A Render Blueprint (`render.yaml`) is retained as an alternative deployment
+configuration; it is not the live production host.
+
+### Remote server environment
+
+- `MINTBEACON_ADDRESS`: deployed MintBeacon contract address.
+- `MCP_ALLOWED_HOSTS`: comma-separated exact hostnames accepted by the
+  service. The Render blueprint sets the expected `mintbeacon-mcp.onrender.com`.
+- `MCP_ALLOWED_ORIGINS`: comma-separated browser origins allowed by CORS.
+  Defaults to `https://mintbeacon.vercel.app`. Non-browser MCP clients
+  without an `Origin` header can connect without CORS.
+- `MCP_RATE_LIMIT_PER_MINUTE`: per-client request limit (default 30).
+- `MCP_MAX_BODY_BYTES`: maximum JSON request body (default 65,536 bytes).
+- `PORT` or `MCP_PORT`: HTTP listener port (default 8000).
+
+The endpoint is stateless and supports both protocol eras:
+
+- **Modern MCP `2026-07-28`:** `server/discover` plus per-request
+  `_meta`; no initialize handshake or session IDs. HTTP POSTs must include
+  `MCP-Protocol-Version`, `Mcp-Method`, and (for `tools/call`)
+  `Mcp-Name`, with the values validated against the JSON body.
+- **Legacy Streamable HTTP `2025-11-25`:** the `initialize` handshake is
+  supported, with stateless JSON responses and no issued session ID.
+
+POST requests to `/mcp` receive JSON responses; accepted notifications
+receive HTTP 202. GET and DELETE on `/mcp` return 405 because this server
+does not offer standalone SSE streams or sessions. This server does not
+implement the deprecated `2024-11-05` HTTP+SSE transport. Clients must POST
+JSON-RPC requests with `Content-Type: application/json` and an `Accept`
+header containing **both** `application/json` and `text/event-stream`.
+
+The HTTP transport applies a request-size limit, per-client in-memory rate
+limit, Origin checks, and optional Host allowlisting. Local HTTP runs bind to
+`127.0.0.1` by default and accept loopback Host values only. In production,
+configure the exact deployed hostname in `MCP_ALLOWED_HOSTS`. Proxy headers
+are ignored for rate-limit identity unless `MCP_TRUST_PROXY_HEADERS=true`
+is explicitly enabled behind a trusted proxy, preventing caller-controlled
+`X-Forwarded-For` spoofing. Browser clients must use an allowed Origin.
+Direct agent clients generally do not send an Origin header.
+
+The local smoke tests run without contacting BSC:
+
+```bash
+python3 -m unittest discover -s mcp -p 'test_*.py'
+```
+
+### Connect a remote MCP client
+
+Use this remote MCP URL in any MCP client that supports
+Streamable HTTP:
+
+`https://mintbeacon-mcp.wisp.uno/mcp`
+
+Generic remote configuration:
+
+```json
+{
+  "mcpServers": {
+    "mintbeacon": {
+      "type": "http",
+      "url": "https://mintbeacon-mcp.wisp.uno/mcp"
+    }
+  }
+}
+```
+
+Some MCP hosts use a different label for remote Streamable HTTP connections;
+select **Streamable HTTP** and paste the endpoint URL above. Do not use the
+health-check URL as the MCP server URL.
+
+The root-level `server.json` is the official MCP Registry metadata for this
+remote server. To publish/update the public listing, install the official
+`mcp-publisher` CLI, authenticate with the GitHub account that owns this
+repository, then run `mcp-publisher publish` from the repository root. The
+Registry requires publisher authentication; committing `server.json` alone
+does not publish the listing. After publishing, verify the entry by searching
+for `io.github.tosinchukwu/mintbeacon` in the official Registry.
+
+### Local and remote behavior
+
+Both transports expose the same tools and safety model:
+
+- Local stdio: `python3 mcp/server.py`.
+- Remote HTTP: `python3 mcp/http_server.py` (or the Render deployment).
+- Neither transport signs, sends, or sponsors transactions.
+- `verify_mint` is a read-only `eth_call`; it does not increment on-chain
+  hackathon counters.
+- Only a successful, separately user-approved website `checkMint`
+  transaction can record an on-chain check.
+
+For an agent workflow:
+
+1. Call `mintbeacon_status` to confirm the live BNB Chain deployment.
+2. Call `verify_mint` with the target contract and the actual user's/agent's
+   own `checkerAddress`.
+3. Explain the verdict and evidence; treat `LIKELY_FREE` as a hypothesis,
+   not a guarantee.
+4. Never claim that an MCP read-only verification counts toward hackathon
+   on-chain interaction metrics. Only successful recorded `checkMint`
+   transactions update those counters.
+5. If the user wants a recorded check, direct them to the website's wallet
+   flow. The MCP server itself never signs or sends transactions.
 
 ## Honest limits
 
@@ -141,7 +302,7 @@ as fallback). No mainnet paid lane until one route is confirmed working.
 
 ## Tested
 
-2026-11-20, driven over stdio JSON-RPC (`initialize` → `tools/list` →
+Local stdio test record (2026-11-20), driven over JSON-RPC (`initialize` → `tools/list` →
 `tools/call`, clean EOF exit):
 
 - `verify_mint` AgentEcho `0xff2dac2389a6a9593209b6008d5ffa9e73aa19c2` →
@@ -158,5 +319,7 @@ as fallback). No mainnet paid lane until one route is confirmed working.
 - `free_mints_feed` (limit 3) → 3 projects, 46 `free_live` total
   (Worldygg Tree 20,282/99,999; AgentPad Pass 5,959/10,000; M3MO Genesis
   null/10,000).
+- `mintbeacon_status` → live chain/deployment metadata and on-chain counters.
+- `tools/list` exposes all three tools with read-only MCP annotations.
 - Bad address → JSON-RPC error `-32602`; unknown method → `-32601`;
   `MINTBEACON_ADDRESS` set to an address with no code → clean `isError`.

@@ -1,0 +1,23 @@
+name: MCP transport tests
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main, feature/mcp-agent-discovery]
+
+jobs:
+  test-mcp-transports:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Compile MCP server files
+        working-directory: mcp
+        run: python -m py_compile server.py http_server.py test_transports.py
+      - name: Run offline MCP transport tests
+        run: python -m unittest discover -s mcp -p 'test_*.py' -v
