@@ -339,10 +339,13 @@ class MintBeaconHTTPHandler(BaseHTTPRequestHandler):
         if response is None:
             self._send(202)
             return
-        if response.get("error", {}).get("code") == -32601 and (
-            request.get("params", {}).get("_meta", {}).get(PROTOCOL_VERSION_META_KEY)
-            == MODERN_PROTOCOL_VERSION
-        ):
+        request_params = request.get("params")
+        request_meta = request_params.get("_meta") if isinstance(request_params, dict) else None
+        is_modern_request = (
+            isinstance(request_meta, dict)
+            and request_meta.get(PROTOCOL_VERSION_META_KEY) == MODERN_PROTOCOL_VERSION
+        )
+        if response.get("error", {}).get("code") == -32601 and is_modern_request:
             self._json(404, response)
             return
         if response.get("error", {}).get("code") == -32022:
