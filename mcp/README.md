@@ -145,18 +145,18 @@ The configured public Streamable HTTP endpoint is hosted on Wispbyte:
 - **Health check:** `https://mintbeacon-mcp.wisp.uno/healthz`
 - **Website:** `https://mintbeacon.vercel.app`
 
-The MCP endpoint previously passed independent MCP Inspector tests. A fresh
-public health check from GitHub Actions on 2026-11-25 returned HTTP 403, so
-the Wispbyte host must be reactivated and rechecked before treating the remote
-endpoint as available to agents. The MCP Registry metadata is published, but
-a directory listing does not guarantee the endpoint is currently reachable.
-The health URL is for availability checks only; it is not the MCP transport
-endpoint.
+The Wispbyte host was reactivated on 2026-11-25. Its public
+`/healthz` endpoint has been independently confirmed to return HTTP 200
+with `ok: true`, and the server console confirms successful HTTP 200 POSTs
+to `/mcp`. This confirms that the host and MCP route are responding; it is
+not, by itself, proof that every tool call has completed successfully from an
+external client. The three tool definitions and offline transport tests are
+in the repository. The health URL is for availability checks only; it is
+not the MCP transport endpoint.
 
-The Wispbyte launch wrapper sets `PORT=14831` and `MCP_HOST=0.0.0.0`.
-Set `MCP_ALLOWED_HOSTS=mintbeacon-mcp.wisp.uno` in that wrapper before
-restarting the service so Host validation is enabled. Keep the browser Origin
-allowlist restricted to `https://mintbeacon.vercel.app`. Do not set
+The Wispbyte launch wrapper sets `PORT=14831` and `MCP_HOST=0.0.0.0`,
+restricts `MCP_ALLOWED_HOSTS=mintbeacon-mcp.wisp.uno`, and keeps the browser
+Origin allowlist restricted to `https://mintbeacon.vercel.app`. Do not set
 `MCP_ALLOWED_HOSTS` to an empty value in production because an empty value
 disables Host filtering.
 
