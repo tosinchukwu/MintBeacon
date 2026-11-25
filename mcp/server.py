@@ -929,7 +929,7 @@ def handle_request(req, mintbeacon):
     if not isinstance(method, str) or not method:
         return err_result(req_id, -32600, "method must be a non-empty string")
     is_notification = "id" not in req or req_id is None
-    params = req.get("params") or {}
+    params = req.get("params", {})
     if not isinstance(params, dict):
         return err_result(req_id, -32602, "params must be an object")
     request_meta = params.get("_meta") if isinstance(params, dict) else None
