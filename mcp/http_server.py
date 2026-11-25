@@ -44,7 +44,9 @@ ALLOWED_ORIGINS = {
 }
 ALLOWED_HOSTS = {
     value.strip().lower()
-    for value in os.environ.get("MCP_ALLOWED_HOSTS", "").split(",")
+    for value in os.environ.get(
+        "MCP_ALLOWED_HOSTS", "localhost,127.0.0.1,[::1]"
+    ).split(",")
     if value.strip()
 }
 
@@ -192,7 +194,11 @@ class MintBeaconHTTPHandler(BaseHTTPRequestHandler):
     def _host_allowed(self):
         if not ALLOWED_HOSTS:
             return True
-        host = self.headers.get("Host", "").split(":", 1)[0].lower()
+        host_header = self.headers.get("Host", "").lower()
+        if host_header.startswith("["):
+            host = host_header.split("]", 1)[0] + "]"
+        else:
+            host = host_header.rsplit(":", 1)[0] if ":" in host_header else host_header
         return host in ALLOWED_HOSTS
 
     def _send(self, status, body=b"", content_type=None, extra_headers=None):
