@@ -1,0 +1,49 @@
+{
+  "accepts": [
+    {
+      "amountDisplay": "$0.01",
+      "asset": "0xcE24439F2D9C6a2289F741120FE202248B666666",
+      "assetDecimals": 18,
+      "assetName": "U",
+      "maxAmountRequired": "10000000000000000",
+      "network": "eip155:56",
+      "payTo": "0xF59BC28F2c942a69417652D9359602A755ECCC99",
+      "scheme": "eip3009"
+    }
+  ],
+  "contract": {
+    "address": "0x29f9AaBF15f681011334Ba131E6CBb884b39AF2B",
+    "note": "Deployed 2026-11-25 on BSC mainnet by Tosin via Remix (solc 0.8.24, optimizer OFF). Owner = 0xF59BC28F2c942a69417652D9359602A755ECCC99 (tosinchukwu.ai wallet), registry = 0x60B9262456dE011F7d15a54CdD8c48bAaa8B022F. BscScan verification: PENDING \u2014 verify with compiler 0.8.24, optimizer OFF, EVM cancun."
+  },
+  "description": "A free-mint verifier for AI agents on BSC. Give it a contract address and it answers live on-chain whether that contract is a free, gas-only Agent ID mint (FREE / LIKELY_FREE / PAID / UNKNOWN). The free tier probes any contract via the on-chain MintBeacon verifier. The paid deep check ($0.01) resolves LIKELY_FREE cases with source verification plus a simulation from the payer's own address, and risk flags.",
+  "discovery": {
+    "chainId": 56,
+    "network": "eip155:56",
+    "tags": [
+      "agent-payments",
+      "free-mint",
+      "verifier",
+      "agent-id",
+      "bsc"
+    ]
+  },
+  "draftNote": "Ready to submit only once a paid flow is confirmed working. As of 2026-11-25: the MintBeacon contract IS deployed and verified on-chain (owner/registry/probeMint checked live), but no facilitator is wired (Binance B402 needs a partner account; b402.ai does not support U; self-hosted facilitator unbuilt) and the resource URL below is still a placeholder until the backend is hosted at a public URL. The free tier is live via probeMint on-chain. The paid lane is NOT live.",
+  "extensions": {
+    "bazaar": {
+      "note": "B402 Bazaar catalogues a resource automatically when a payment settles carrying the Bazaar extension - there is no separate seller registration. This listing becomes submittable once a paid flow settles with the extension; until then it is a draft only."
+    }
+  },
+  "facilitator": "none-configured (2026-11-20). Binance B402 requires a partner account (clientId + accessToken + RSA key + IP whitelist); b402.ai does not support U; self-hosted facilitator unbuilt. See backend/README.md 'Payment routes' for the full test log.",
+  "hackathon": "Binance Wallet x BNB Chain Agent ID Hackathon 2026 (submissions close 2026-12-09 08:00 UTC)",
+  "name": "MintBeacon",
+  "owner": "tosinchukwu.ai",
+  "pricing": {
+    "freeTier": "On-chain probe via the MintBeacon contract (probeMint, no signature) and GET /verify - free, unlimited. Free tier carries the hackathon's 30-holder bar via checkerCount().",
+    "paidTier": "$0.01 per deep check in U (EIP-3009) to 0xF59BC28F2c942a69417652D9359602A755ECCC99. Deep check: Sourcify source verification + simulation from the payer's own address + risk flags. One payment = one deep check."
+  },
+  "resource": "https://mintbeacon.example/api/deep-check",
+  "resourceNote": "PLACEHOLDER URL - replace with the real public backend URL once hosted. The free tier lives at GET /verify?contract=0x... on the same host; the deep check is POST /deep-check (HTTP 402) then POST /deep-check/claim.",
+  "status": "DRAFT - DO NOT SUBMIT",
+  "type": "http",
+  "x402Version": 2
+}

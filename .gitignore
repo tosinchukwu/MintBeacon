@@ -1,0 +1,17 @@
+# Foundry build artifacts
+out/
+cache/
+broadcast/
+# local test run logs
+*.log
+# editor / OS
+.DS_Store
+.vscode/
+*.swp
+# secrets — never commit keys, mnemonics, or .env files
+.env
+.env.*
+*.key
+*.pem
+# NOTE: lib/ (forge-std) is intentionally COMMITTED so `forge test` works
+# straight after cloning, with no install step.
