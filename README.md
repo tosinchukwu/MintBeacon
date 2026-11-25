@@ -31,9 +31,27 @@ The contract is gated on the Agent ID registry (`0x60B9262456dE011F7d15a54CdD8c4
 
 The on-chain probe can only *suggest* free (LIKELY_FREE). The paid deep-check resolves those cases off-chain: source verification + simulation from the checker's own address, plus risk flags. Payment is $0.01 in a stablecoin (U first) via x402 — the contract holds no payment logic; the facilitator verifies payment off-chain. **Status 2026-11-20: the backend is built (`backend/`, stdlib-only, smoke-tested live in test mode) but the paid lane is NOT live.** Payment routes (see `BUILD_NOTE.md` §6.1): Binance B402 needs a partner account (no public sandbox URL — the application is the gating step, not yet submitted); b402.ai is reachable but does not support U (USDT instead) and its verify endpoint timed out on probe; self-hosted facilitator unbuilt. **No mainnet paid lane is promised until one route is confirmed working.** The B402 Bazaar catalog itself is readable (`GET .../bazaar/resources` → HTTP 200, 1,010 resources) and already lists U on BSC mainnet via eip3009 at exactly $0.01 — the price point is proven in the catalog.
 
-## Status (2026-11-20)
+## Live deployment (2026-11-25)
 
-**Everything is built; deployment is blocked.** The contract, frontend, MCP server, paid deep-check backend and Bazaar draft are all written and tested (see [`BUILD_NOTE.md`](BUILD_NOTE.md)). **Nothing is deployed and nothing is spent.** Deployment via the Binance Agentic Wallet CLI is not possible — `baw contract-call preview` requires a `--to` address and the CLI (latest 1.12.0) has no contract-creation path. The way to deploy is with `forge`/`cast` from any funded wallet using `deploy_data.txt` (constructor args: registry `0x60B9262456dE011F7d15a54CdD8c48bAaa8B022F`, owner = Tosin's wallet `0xF59BC28F2c942a69417652D9359602A755ECCC99`); the deployer pays ~0.00013 BNB gas and need not be the owner. Until the contract is deployed, the frontend, MCP server and backend run their off-chain probe and say so. Full detail: [`BUILD_NOTE.md`](BUILD_NOTE.md) §13.
+**MintBeacon is deployed on BNB Smart Chain mainnet.**
+
+- **Website:** https://mintbeacon.vercel.app
+- **MCP endpoint (Streamable HTTP):** https://mintbeacon-mcp.wisp.uno/mcp
+- **MCP health check:** https://mintbeacon-mcp.wisp.uno/healthz
+- **Official MCP Registry:** `io.github.tosinchukwu/mintbeacon` (version `1.0.1`)
+- **Contract:** `0x29f9AaBF15f681011334Ba131E6CBb884b39AF2B`
+- **Network:** BNB Smart Chain mainnet (chain ID 56)
+- **Agent ID registry:** `0x60B9262456dE011F7d15a54CdD8c48bAaa8B022F`
+
+The contract is source-verified on BscScan. The MCP server exposes three
+read-only tools: `mintbeacon_status`, `verify_mint`, and
+`free_mints_feed`. It never signs or sends transactions. Remote connection
+instructions and local STDIO setup are in [`mcp/README.md`](mcp/README.md).
+
+The paid deep-check API is **not live**; no paid verification is advertised.
+The current product focuses on the deployed on-chain verifier, public website,
+and read-only MCP agent integration. See [`BUILD_NOTE.md`](BUILD_NOTE.md)
+for implementation details, test history, limitations, and remaining work.
 
 ## Repo layout
 
@@ -42,7 +60,8 @@ contracts/MintBeacon.sol   # the contract (Solidity ^0.8.20, solc 0.8.24, no dep
 contracts/MintBeacon.abi.json  # trimmed ABI (functions + events)
 test/                      # forge tests + mock targets + fork/eth_call scripts
 frontend/                  # single-page app (index.html, no build step, no dependencies)
-mcp/                       # MCP server (server.py, stdlib-only): verify_mint + free_mints_feed
+mcp/                       # MCP stdio + Streamable HTTP server and offline transport tests
+server.json                # Official MCP Registry metadata for the live remote endpoint
 backend/                   # paid deep-check API (server.py, stdlib-only): GET /verify, POST /deep-check (402), POST /deep-check/claim
 bazaar/                     # B402 Bazaar listing draft (listing.json — DRAFT, do not submit)
 foundry.toml               # solc 0.8.24, optimizer 200 runs, evm cancun
