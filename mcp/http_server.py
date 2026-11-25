@@ -105,7 +105,12 @@ def validate_modern_headers(request, headers):
     meta = meta if isinstance(meta, dict) else {}
     body_version = meta.get(PROTOCOL_VERSION_META_KEY)
     header_version = headers.get("MCP-Protocol-Version")
-    modern = body_version is not None or header_version == MODERN_PROTOCOL_VERSION
+    modern = (
+        body_version is not None
+        or header_version == MODERN_PROTOCOL_VERSION
+        or request.get("method") == "server/discover"
+        or CLIENT_CAPABILITIES_META_KEY in meta
+    )
     if not modern:
         return None
 
