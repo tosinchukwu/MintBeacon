@@ -602,6 +602,54 @@ def tool_verify_mint(args, mintbeacon):
     return result
 
 
+def tool_mintbeacon_status(mintbeacon):
+    """Return live BSC deployment metadata and on-chain usage counters."""
+    if not mintbeacon:
+        raise ToolError("MintBeacon deployment is not configured")
+    code = rpc("eth_getCode", [mintbeacon, "latest"])
+    if code in ("0x", "", None):
+        raise ToolError(f"MintBeacon address {mintbeacon} has no deployed code on BSC")
+    chain_hex = rpc("eth_chainId", [])
+    try:
+        chain_id = int(chain_hex, 16)
+    except (TypeError, ValueError):
+        raise ToolError(f"BSC RPC returned an invalid chain ID: {chain_hex!r}")
+    registry_code = rpc("eth_getCode", [REGISTRY, "latest"])
+    ok_holders, holders = try_uint(mintbeacon, enc(SEL["checkerCount"]))
+    ok_checks, checks = try_uint(mintbeacon, enc(SEL["totalChecks"]))
+    return {
+        "tool": "mintbeacon_status",
+        "network": "BNB Smart Chain Mainnet" if chain_id == 56 else "Unexpected EVM network",
+        "chainId": chain_id,
+        "expectedChainId": 56,
+        "networkMatchesBscMainnet": chain_id == 56,
+        "contractAddress": mintbeacon,
+        "contractCodePresent": True,
+        "contractSourceVerification": "verified on BscScan",
+        "contractExplorerUrl": f"https://bscscan.com/address/{mintbeacon}",
+        "websiteUrl": "https://mintbeacon.vercel.app",
+        "agentIdRegistry": REGISTRY,
+        "agentIdRegistryCodePresent": registry_code not in ("0x", "", None),
+        "distinctAgentIdHolders": holders if ok_holders else None,
+        "totalRecordedChecks": checks if ok_checks else None,
+        "counterDefinitions": {
+            "distinctAgentIdHolders": (
+                "Unique Agent ID-holding addresses that have successfully recorded "
+                "at least one on-chain check. Repeated checks by one address count once."
+            ),
+            "totalRecordedChecks": (
+                "Total successful on-chain checkMint transactions. Read-only MCP "
+                "verification calls do not increment this counter."
+            ),
+        },
+        "mcpTransactionPolicy": (
+            "All MCP tools are read-only. They never sign or send transactions. "
+            "The website's optional on-chain check requires the user's own wallet approval."
+        ),
+        "checkedAt": datetime.now(timezone.utc).isoformat(),
+    }
+
+
 def tool_free_mints_feed(args):
     if not isinstance(args, dict):
         args = {}
@@ -644,6 +692,23 @@ def tool_free_mints_feed(args):
 
 TOOLS = [
     {
+        "name": "mintbeacon_status",
+        "description": (
+            "Inspect the live MintBeacon deployment on BNB Smart Chain: chain ID, "
+            "contract address, Agent ID registry, distinct Agent ID holder count and "
+            "total successful on-chain checks. This is read-only and does not increment "
+            "either counter. No wallet address is required."
+        ),
+        "inputSchema": {"type": "object", "properties": {}, "required": []},
+        "annotations": {
+            "title": "MintBeacon deployment status",
+            "readOnlyHint": True,
+            "destructiveHint": False,
+            "idempotentHint": True,
+            "openWorldHint": True,
+        },
+    },
+    {
         "name": "verify_mint",
         "description": (
             "Verify whether a BSC contract looks like a FREE, gas-only Agent ID "
@@ -670,6 +735,13 @@ TOOLS = [
             },
             "required": ["contractAddress"],
         },
+        "annotations": {
+            "title": "Verify a BNB Chain mint",
+            "readOnlyHint": True,
+            "destructiveHint": False,
+            "idempotentHint": True,
+            "openWorldHint": True,
+        },
     },
     {
         "name": "free_mints_feed",
@@ -690,6 +762,13 @@ TOOLS = [
                 },
             },
             "required": [],
+        },
+        "annotations": {
+            "title": "List live free mints",
+            "readOnlyHint": True,
+            "destructiveHint": False,
+            "idempotentHint": True,
+            "openWorldHint": True,
         },
     },
 ]
@@ -730,6 +809,16 @@ def handle_request(req, mintbeacon):
             "protocolVersion": params.get("protocolVersion", "2024-11-05"),
             "capabilities": {"tools": {}},
             "serverInfo": {"name": SERVER_NAME, "version": VERSION},
+            "instructions": (
+                "MintBeacon is a read-only BNB Smart Chain mainnet mint verifier. "
+                "Call mintbeacon_status to inspect the live deployment and counters. "
+                "Call verify_mint with the target contractAddress and, whenever possible, "
+                "the actual user's or agent's own checkerAddress; if omitted, the legacy "
+                "deployer-wallet default is used and the result is not personalised to the caller. "
+                "verify_mint uses eth_call and does not create a transaction or increment counters. "
+                "The separate website offers an optional user-approved on-chain check; this MCP "
+                "server never signs or sends transactions."
+            ),
         }}
     if method == "ping":
         return {"jsonrpc": "2.0", "id": req_id, "result": {}}
@@ -740,10 +829,12 @@ def handle_request(req, mintbeacon):
         params = req.get("params") or {}
         name = params.get("name")
         args = params.get("arguments") or {}
-        if name not in ("verify_mint", "free_mints_feed"):
+        if name not in ("mintbeacon_status", "verify_mint", "free_mints_feed"):
             return err_result(req_id, -32602, f"unknown tool: {name!r}")
         try:
-            if name == "verify_mint":
+            if name == "mintbeacon_status":
+                result = tool_mintbeacon_status(mintbeacon)
+            elif name == "verify_mint":
                 result = tool_verify_mint(args, mintbeacon)
             else:
                 result = tool_free_mints_feed(args)
