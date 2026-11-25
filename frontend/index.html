@@ -114,10 +114,10 @@ details{margin-top:14px;border-top:1px solid #cbd9e8;padding-top:12px}summary{cu
     <ul>
       <li><b>LIKELY_FREE means "probably free - deep-check recommended", never a guarantee.</b> The probe saw no payment, but could not prove the mint costs nothing (usually it was stopped by an identity check, or a mint function looked like it reached a state change). A paid mint whose payment check runs after its identity gate can look LIKELY_FREE.</li>
       <li><b>FREE</b> means the probe found positive proof the mint costs nothing for the checker (a free-lane getter answering yes, or a price of 0). <b>PAID</b> means a payment error or a price above 0 was seen. <b>UNKNOWN</b> means the probe could not decide - the mint may be closed, sold out, signature-gated, or use a pattern this probe does not recognise.</li>
-      <li>While MintBeacon is undeployed, the free probe runs <b>off-chain</b>, calling the target contract directly with read-only calls (the same classification as the contract). One off-chain gap: a fully open mint can read UNKNOWN here, because a plain <span class="mono">eth_call</span> simulates the mint successfully and discards it, while the on-chain probe would catch the state-change attempt. The on-chain probe is authoritative once deployed.</li>
+      <li>The free probe uses the deployed MintBeacon contract on-chain. If that probe is unavailable, the backend may fall back to the off-chain classifier; a fully open mint can read UNKNOWN in that fallback because a plain <span class="mono">eth_call</span> simulates the mint and discards it, while the on-chain probe catches the state-change attempt.</li>
       <li>The probe never mints from the target, never sends it value, and never looks up a wallet by Agent ID name. The only identity question ever asked is "does this address hold an Agent ID?"</li>
       <li>No promised returns. A "free" verdict says nothing about whether the token will ever sell or be worth anything.</li>
-      <li>Built for the Binance Agent ID Hackathon 2026. Submissions close 2026-12-09 08:00 UTC. Contract source: <span class="mono">contracts/MintBeacon.sol</span>.</li>
+      <li>Built for the Binance Agent ID Hackathon 2026. Submissions close 2026-12-09 08:00 UTC. Contract source: <a href="https://bscscan.com/address/0x29f9AaBF15f681011334Ba131E6CBb884b39AF2B#code" target="_blank" rel="noopener">verified on BscScan</a> (<span class="mono">contracts/MintBeacon.sol</span>).</li>
     </ul>
   </footer>
 </main>
