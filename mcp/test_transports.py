@@ -57,6 +57,18 @@ class StdioTransportTests(unittest.TestCase):
             self.assertTrue(tool["annotations"]["readOnlyHint"])
 
 
+    def test_initialize_negotiates_supported_legacy_versions(self):
+        for requested, expected in (
+            ("2025-11-25", "2025-11-25"),
+            ("2024-11-05", "2024-11-05"),
+            ("2099-01-01", "2025-11-25"),
+        ):
+            response = mcp_server.handle_request({
+                "jsonrpc": "2.0", "id": 99, "method": "initialize",
+                "params": {"protocolVersion": requested},
+            }, None)
+            self.assertEqual(response["result"]["protocolVersion"], expected)
+
 class StreamableHTTPTransportTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -136,6 +148,25 @@ class StreamableHTTPTransportTests(unittest.TestCase):
                 "mintbeacon",
             )
 
+    def test_modern_tool_call_succeeds_with_matching_routing_headers(self):
+        meta = {
+            "io.modelcontextprotocol/protocolVersion": "2026-07-28",
+            "io.modelcontextprotocol/clientCapabilities": {},
+        }
+        with patch.object(mcp_server, "tool_mintbeacon_status", return_value={"ok": True}):
+            with self.post({
+                "jsonrpc": "2.0", "id": 120, "method": "tools/call",
+                "params": {"_meta": meta, "name": "mintbeacon_status", "arguments": {}},
+            }, {
+                "MCP-Protocol-Version": "2026-07-28",
+                "Mcp-Method": "tools/call",
+                "Mcp-Name": "mintbeacon_status",
+            }) as response:
+                payload = json.loads(response.read())
+                self.assertEqual(response.status, 200)
+                self.assertEqual(payload["result"]["resultType"], "complete")
+                self.assertIn('"ok": true', payload["result"]["content"][0]["text"])
+
     def test_modern_tool_call_requires_matching_mcp_name(self):
         meta = {
             "io.modelcontextprotocol/protocolVersion": "2026-07-28",
@@ -199,6 +230,54 @@ class StreamableHTTPTransportTests(unittest.TestCase):
             payload = json.loads(response.read())
             self.assertTrue(payload["ok"])
             self.assertEqual(payload["transport"], "MCP Streamable HTTP")
+
+    def test_health_and_root_reject_disallowed_origin(self):
+        for path in ("/healthz", "/"):
+            request = urllib.request.Request(
+                self.base + path,
+                headers={"Origin": "https://not-allowed.example"},
+            )
+            with self.assertRaises(urllib.error.HTTPError) as caught:
+                urllib.request.urlopen(request, timeout=3)
+            self.assertEqual(caught.exception.code, 403)
+
+    def test_host_allowlist_applies_to_health_endpoint(self):
+        previous = set(http_server.ALLOWED_HOSTS)
+        try:
+            http_server.ALLOWED_HOSTS.clear()
+            http_server.ALLOWED_HOSTS.add("allowed.example")
+            request = urllib.request.Request(self.base + "/healthz")
+            with self.assertRaises(urllib.error.HTTPError) as caught:
+                urllib.request.urlopen(request, timeout=3)
+            self.assertEqual(caught.exception.code, 403)
+        finally:
+            http_server.ALLOWED_HOSTS.clear()
+            http_server.ALLOWED_HOSTS.update(previous)
+
+    def test_request_body_size_limit(self):
+        previous = http_server.MAX_BODY_BYTES
+        try:
+            http_server.MAX_BODY_BYTES = 8
+            with self.assertRaises(urllib.error.HTTPError) as caught:
+                self.post({"jsonrpc": "2.0", "id": 1, "method": "ping"})
+            self.assertEqual(caught.exception.code, 413)
+        finally:
+            http_server.MAX_BODY_BYTES = previous
+
+    def test_rate_limit_returns_429(self):
+        previous = http_server.RATE_LIMIT
+        try:
+            http_server._rate_hits.clear()
+            http_server.RATE_LIMIT = 1
+            with self.post({"jsonrpc": "2.0", "id": 1, "method": "ping"}) as response:
+                self.assertEqual(response.status, 200)
+            with self.assertRaises(urllib.error.HTTPError) as caught:
+                self.post({"jsonrpc": "2.0", "id": 2, "method": "ping"})
+            self.assertEqual(caught.exception.code, 429)
+            self.assertIn("Retry-After", caught.exception.headers)
+        finally:
+            http_server.RATE_LIMIT = previous
+            http_server._rate_hits.clear()
 
     def test_disallowed_origin_is_rejected(self):
         with self.assertRaises(urllib.error.HTTPError) as caught:
