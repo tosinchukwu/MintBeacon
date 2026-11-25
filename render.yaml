@@ -5,7 +5,7 @@ services:
     plan: free
     region: ohio
     rootDir: mcp
-    buildCommand: python -m py_compile server.py http_server.py
+    buildCommand: python -m py_compile server.py http_server.py test_transports.py && python -m unittest test_transports
     startCommand: python http_server.py
     healthCheckPath: /healthz
     envVars:
