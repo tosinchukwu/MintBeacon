@@ -21,8 +21,9 @@ jobs:
         run: python -m py_compile server.py http_server.py test_transports.py
       - name: Run offline MCP transport tests
         run: python -m unittest discover -s mcp -p 'test_*.py' -v
-      - name: Smoke-test the public Wispbyte MCP endpoint
+      - name: Best-effort smoke test of the public Wispbyte MCP endpoint
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        continue-on-error: true
         run: |
           python - <<'PY'
           import json
