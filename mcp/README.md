@@ -137,22 +137,27 @@ The default local listener is `127.0.0.1:8000`. On hosting platforms,
 to override the host, or `MCP_PORT` to change the local port. The MCP endpoint is
 `http://localhost:8000/mcp`; health check is `/healthz`.
 
-### Deploy on Render
+### Live deployment (Wispbyte)
 
-A root-level `render.yaml` blueprint creates a Python web service named
-`mintbeacon-mcp`, with no third-party packages. In Render, create a new
-Blueprint from this GitHub repository and review the service settings before
-deploying. The intended public endpoint is:
+The current public Streamable HTTP endpoint is hosted on Wispbyte:
 
-`https://mintbeacon-mcp.onrender.com/mcp`
+- **MCP endpoint:** `https://mintbeacon-mcp.wisp.uno/mcp`
+- **Health check:** `https://mintbeacon-mcp.wisp.uno/healthz`
+- **Website:** `https://mintbeacon.vercel.app`
 
-The intended health URL is:
+The service is a remote, stateless MCP server. Use the exact `/mcp` URL in
+remote MCP clients. The health URL is for availability checks only; it is not
+the MCP transport endpoint.
 
-`https://mintbeacon-mcp.onrender.com/healthz`
+The Wispbyte launch wrapper sets `PORT=14831` and `MCP_HOST=0.0.0.0`.
+Set `MCP_ALLOWED_HOSTS=mintbeacon-mcp.wisp.uno` in that wrapper before
+restarting the service so Host validation is enabled. Keep the browser Origin
+allowlist restricted to `https://mintbeacon.vercel.app`. Do not set
+`MCP_ALLOWED_HOSTS` to an empty value in production because an empty value
+disables Host filtering.
 
-If Render assigns a different hostname, update `MCP_ALLOWED_HOSTS` in the
-service environment to that exact hostname (without scheme or path). Keep
-the hostname in sync with the deployed URL.
+A Render Blueprint (`render.yaml`) is retained as an alternative deployment
+configuration; it is not the live production host.
 
 ### Remote server environment
 
@@ -183,12 +188,13 @@ JSON-RPC requests with `Content-Type: application/json` and an `Accept`
 header containing **both** `application/json` and `text/event-stream`.
 
 The HTTP transport applies a request-size limit, per-client in-memory rate
-limit, Origin allowlist, and Host allowlist. Local HTTP runs bind to
-`127.0.0.1` by default and accept loopback Host values only. The Render
-blueprint configures the deployed hostname and the MintBeacon website Origin.
-The reverse proxy must overwrite `X-Forwarded-For`; otherwise a caller
-could spoof the address used for rate-limiting. Browser clients must use an
-allowed Origin. Direct agent clients generally do not send an Origin header.
+limit, Origin checks, and optional Host allowlisting. Local HTTP runs bind to
+`127.0.0.1` by default and accept loopback Host values only. In production,
+configure the exact deployed hostname in `MCP_ALLOWED_HOSTS`. Proxy headers
+are ignored for rate-limit identity unless `MCP_TRUST_PROXY_HEADERS=true`
+is explicitly enabled behind a trusted proxy, preventing caller-controlled
+`X-Forwarded-For` spoofing. Browser clients must use an allowed Origin.
+Direct agent clients generally do not send an Origin header.
 
 The local smoke tests run without contacting BSC:
 
@@ -198,16 +204,35 @@ python3 -m unittest discover -s mcp -p 'test_*.py'
 
 ### Connect a remote MCP client
 
-Use this remote MCP URL in an MCP client that supports Streamable HTTP:
+Use this remote MCP URL in any MCP client that supports
+Streamable HTTP:
 
-`https://mintbeacon-mcp.onrender.com/mcp`
+`https://mintbeacon-mcp.wisp.uno/mcp`
 
-For example, an MCP client may accept a remote server entry with transport
-type `streamable-http` and that URL. The exact configuration syntax varies
-by host. Do not configure a remote URL until the Render service has actually
-been deployed and `/healthz`, a modern `server/discover` request, and
-`tools/list` have been verified. The legacy `initialize` flow is also
-covered by the offline tests.
+Generic remote configuration:
+
+```json
+{
+  "mcpServers": {
+    "mintbeacon": {
+      "type": "http",
+      "url": "https://mintbeacon-mcp.wisp.uno/mcp"
+    }
+  }
+}
+```
+
+Some MCP hosts use a different label for remote Streamable HTTP connections;
+select **Streamable HTTP** and paste the endpoint URL above. Do not use the
+health-check URL as the MCP server URL.
+
+The root-level `server.json` is the official MCP Registry metadata for this
+remote server. To publish/update the public listing, install the official
+`mcp-publisher` CLI, authenticate with the GitHub account that owns this
+repository, then run `mcp-publisher publish` from the repository root. The
+Registry requires publisher authentication; committing `server.json` alone
+does not publish the listing. After publishing, verify the entry by searching
+for `io.github.tosinchukwu/mintbeacon` in the official Registry.
 
 ### Local and remote behavior
 
