@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
 """MintBeacon MCP server — free-mint verifier for agents on BNB Smart Chain.
 
-Exposes two tools over MCP (JSON-RPC 2.0, newline-delimited, stdio):
+Exposes three tools over MCP (JSON-RPC 2.0). This module is the local stdio
+transport; mcp/http_server.py reuses the same request handler for remote
+Streamable HTTP:
 
-  * verify_mint     — classify a contract as FREE / LIKELY_FREE / PAID / UNKNOWN
-  * free_mints_feed — list currently free, live mints from mints-bnb.pages.dev
+  * mintbeacon_status — inspect the deployed contract and on-chain counters
+  * verify_mint       — classify a contract as FREE / LIKELY_FREE / PAID / UNKNOWN
+  * free_mints_feed   — list currently free, live mints from mints-bnb.pages.dev
 
 Standard library only (no pip dependencies), so it runs anywhere Python 3
 is installed. It NEVER signs, NEVER sends transactions and NEVER holds keys:
@@ -63,7 +66,7 @@ import urllib.error
 import urllib.request
 from datetime import datetime, timezone
 
-VERSION = "0.1.0"
+VERSION = "0.2.0"
 SERVER_NAME = "mintbeacon"
 
 # ---------------------------------------------------------------------------
