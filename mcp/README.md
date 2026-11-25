@@ -132,8 +132,9 @@ cd mcp
 python3 http_server.py
 ```
 
-The default listener is `0.0.0.0:8000`. Set `PORT` (preferred by hosting
-platforms) or `MCP_PORT` to change the port. The MCP endpoint is
+The default local listener is `127.0.0.1:8000`. On hosting platforms,
+`PORT` automatically switches the bind address to `0.0.0.0`. Set `MCP_HOST`
+to override the host, or `MCP_PORT` to change the local port. The MCP endpoint is
 `http://localhost:8000/mcp`; health check is `/healthz`.
 
 ### Deploy on Render
