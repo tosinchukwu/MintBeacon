@@ -834,7 +834,9 @@ def _modern_result(result):
 
 def _handle_modern_request(req, mintbeacon):
     params = req.get("params") or {}
-    meta = params.get("_meta") if isinstance(params, dict) else None
+    if not isinstance(params, dict):
+        return err_result(req.get("id"), -32602, "params must be an object")
+    meta = params.get("_meta")
     if not isinstance(meta, dict):
         return err_result(req.get("id"), -32602, "modern MCP requests require params._meta")
     requested = meta.get(PROTOCOL_VERSION_META_KEY)
@@ -890,8 +892,12 @@ def _handle_tool_call(req, mintbeacon):
     """Shared tools/call implementation for legacy and modern MCP requests."""
     params = req.get("params") or {}
     req_id = req.get("id")
+    if not isinstance(params, dict):
+        return err_result(req_id, -32602, "params must be an object")
     name = params.get("name")
     args = params.get("arguments") or {}
+    if not isinstance(args, dict):
+        return err_result(req_id, -32602, "tool arguments must be an object")
     if name not in ("mintbeacon_status", "verify_mint", "free_mints_feed"):
         return err_result(req_id, -32602, f"unknown tool: {name!r}")
     try:
@@ -920,8 +926,12 @@ def handle_request(req, mintbeacon):
                           -32600, "invalid JSON-RPC 2.0 request")
     method = req.get("method", "")
     req_id = req.get("id")
+    if not isinstance(method, str) or not method:
+        return err_result(req_id, -32600, "method must be a non-empty string")
     is_notification = "id" not in req or req_id is None
     params = req.get("params") or {}
+    if not isinstance(params, dict):
+        return err_result(req_id, -32602, "params must be an object")
     request_meta = params.get("_meta") if isinstance(params, dict) else None
     if isinstance(request_meta, dict) and (
         PROTOCOL_VERSION_META_KEY in request_meta
