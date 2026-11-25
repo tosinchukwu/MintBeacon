@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>MintBeacon — free-mint verifier for agents on BSC</title>
+<title>MintBeacon - free-mint verifier for agents on BSC</title>
 <style>
 :root{color-scheme:light;--ink:#172d49;--muted:#61748d;--line:#9eb5ce;--blue:#1769c2;--paper:#e9eef5;--shadow:0 22px 60px rgba(26,55,91,.22)}
 *{box-sizing:border-box}html{min-height:100%;background:#dce7f2}
@@ -39,7 +39,7 @@ details{margin-top:14px;border-top:1px solid #cbd9e8;padding-top:12px}summary{cu
 <body>
 <main>
   <h1>&#128276; MintBeacon</h1>
-  <p class="sub">Free-mint verifier for agents on BSC. Paste a contract address and find out, live on-chain, whether it looks like a free Agent ID mint — before you spend gas on it.<br>Live contract: <a href="https://bscscan.com/address/0x29f9AaBF15f681011334Ba131E6CBb884b39AF2B" target="_blank" rel="noopener">0x29f9AaBF15f681011334Ba131E6CBb884b39AF2B</a> — source verified on BscScan (exact match, 2026-11-25).</p>
+  <p class="sub">Free-mint verifier for agents on BSC. Paste a contract address and find out, live on-chain, whether it looks like a free Agent ID mint - before you spend gas on it.<br>Live contract: <a href="https://bscscan.com/address/0x29f9AaBF15f681011334Ba131E6CBb884b39AF2B" target="_blank" rel="noopener">0x29f9AaBF15f681011334Ba131E6CBb884b39AF2B</a> - source verified on BscScan (exact match, 2026-11-25).</p>
 
   <div id="deployBanner" class="banner warn"></div>
 
@@ -49,7 +49,7 @@ details{margin-top:14px;border-top:1px solid #cbd9e8;padding-top:12px}summary{cu
   </div>
 
   <h2>1. MintBeacon contract address</h2>
-  <p class="hint">The on-chain check needs a deployed MintBeacon contract. It is deployed at <span class="mono">0x29f9AaBF15f681011334Ba131E6CBb884b39AF2B</span> (source verified on BscScan) — the address is already filled in below. You can paste a different address to check another deployment.</p>
+  <p class="hint">The on-chain check needs a deployed MintBeacon contract. It is deployed at <span class="mono">0x29f9AaBF15f681011334Ba131E6CBb884b39AF2B</span> (source verified on BscScan) - the address is already filled in below. You can paste a different address to check another deployment.</p>
   <label for="deployInput">Deployed MintBeacon address <span class="hint">(optional)</span></label>
   <input type="text" id="deployInput" placeholder="0x&hellip;" autocomplete="off" spellcheck="false">
   <button id="applyDeployBtn" class="small">Use this address</button>
@@ -66,12 +66,12 @@ details{margin-top:14px;border-top:1px solid #cbd9e8;padding-top:12px}summary{cu
     <button class="small" data-example="0x5b49b06a2e25fce0bca865be70f3c62b6319367a">Mossminds</button>
   </div>
 
-  <label for="checkerInput">Checker address <span class="hint">(whose free lane is checked — defaults to the owner's wallet)</span></label>
+  <label for="checkerInput">Checker address <span class="hint">(whose free lane is checked - defaults to the owner's wallet)</span></label>
   <input type="text" id="checkerInput" autocomplete="off" spellcheck="false">
   <button id="connectBtn" class="small">Connect wallet (use my address as checker)</button>
 
   <div>
-    <button id="verifyBtn" class="primary">Verify — free probe</button>
+    <button id="verifyBtn" class="primary">Verify - free probe</button>
   </div>
   <div class="status" id="verifyStatus"></div>
 
@@ -90,10 +90,10 @@ details{margin-top:14px;border-top:1px solid #cbd9e8;padding-top:12px}summary{cu
   </div>
 
   <h2>3. Record the verdict on-chain (optional)</h2>
-  <p class="hint">Calls <span class="mono">checkMint(target)</span> on MintBeacon. Gas only, value 0. Only Agent ID holders can call it, and it counts the caller toward the distinct-holder total. The full transaction is shown for approval <b>before</b> anything is sent — nothing is ever signed automatically.</p>
+  <p class="hint">Calls <span class="mono">checkMint(target)</span> on MintBeacon. Gas only, value 0. Only Agent ID holders can call it, and it counts the caller toward the distinct-holder total. The full transaction is shown for approval <b>before</b> anything is sent - nothing is ever signed automatically.</p>
   <button id="checkOnchainBtn" class="primary">Check on-chain</button>
   <div id="previewCard" class="card" hidden>
-    <h2 style="margin-top:0">Transaction preview — approve this first</h2>
+    <h2 style="margin-top:0">Transaction preview - approve this first</h2>
     <div class="kv"><b>To</b><span class="mono" id="pvTo"></span></div>
     <div class="kv"><b>Function</b><span class="mono">checkMint(address)</span></div>
     <div class="kv"><b>Target</b><span class="mono" id="pvTarget"></span></div>
@@ -110,10 +110,10 @@ details{margin-top:14px;border-top:1px solid #cbd9e8;padding-top:12px}summary{cu
   </div>
 
   <footer>
-    <b>Honest limits — read before trusting a verdict:</b>
+    <b>Honest limits - read before trusting a verdict:</b>
     <ul>
-      <li><b>LIKELY_FREE means "probably free — deep-check recommended", never a guarantee.</b> The probe saw no payment, but could not prove the mint costs nothing (usually it was stopped by an identity check, or a mint function looked like it reached a state change). A paid mint whose payment check runs after its identity gate can look LIKELY_FREE.</li>
-      <li><b>FREE</b> means the probe found positive proof the mint costs nothing for the checker (a free-lane getter answering yes, or a price of 0). <b>PAID</b> means a payment error or a price above 0 was seen. <b>UNKNOWN</b> means the probe could not decide — the mint may be closed, sold out, signature-gated, or use a pattern this probe does not recognise.</li>
+      <li><b>LIKELY_FREE means "probably free - deep-check recommended", never a guarantee.</b> The probe saw no payment, but could not prove the mint costs nothing (usually it was stopped by an identity check, or a mint function looked like it reached a state change). A paid mint whose payment check runs after its identity gate can look LIKELY_FREE.</li>
+      <li><b>FREE</b> means the probe found positive proof the mint costs nothing for the checker (a free-lane getter answering yes, or a price of 0). <b>PAID</b> means a payment error or a price above 0 was seen. <b>UNKNOWN</b> means the probe could not decide - the mint may be closed, sold out, signature-gated, or use a pattern this probe does not recognise.</li>
       <li>While MintBeacon is undeployed, the free probe runs <b>off-chain</b>, calling the target contract directly with read-only calls (the same classification as the contract). One off-chain gap: a fully open mint can read UNKNOWN here, because a plain <span class="mono">eth_call</span> simulates the mint successfully and discards it, while the on-chain probe would catch the state-change attempt. The on-chain probe is authoritative once deployed.</li>
       <li>The probe never mints from the target, never sends it value, and never looks up a wallet by Agent ID name. The only identity question ever asked is "does this address hold an Agent ID?"</li>
       <li>No promised returns. A "free" verdict says nothing about whether the token will ever sell or be worth anything.</li>
@@ -125,9 +125,9 @@ details{margin-top:14px;border-top:1px solid #cbd9e8;padding-top:12px}summary{cu
 <script>
 "use strict";
 /* =====================================================================
-   CONFIG — edit this when MintBeacon is deployed.
+   CONFIG - edit this when MintBeacon is deployed.
    MINTBEACON_ADDRESS: deployed 2026-11-25 on BSC mainnet by Tosin via Remix
-   (solc 0.8.24, optimizer OFF — see BUILD_NOTE.md "Deployment (2026-11-25)").
+   (solc 0.8.24, optimizer OFF - see BUILD_NOTE.md "Deployment (2026-11-25)").
    Paste a different address here, or paste it in the "MintBeacon contract
    address" field in the page (remembered in this browser).
    ===================================================================== */
@@ -138,7 +138,7 @@ const CHAIN_ID_HEX = "0x38"; // BSC mainnet, chain id 56
 const BSCSCAN_TX = "https://bscscan.com/tx/";
 
 /* Public BSC RPC endpoints, tried in rotation. eth_call only for the
-   free probe — no signing. Transport failures retry on the next
+   free probe - no signing. Transport failures retry on the next
    endpoint; a JSON-RPC error (e.g. a revert) is a definitive answer
    and is NOT retried. */
 const RPC_URLS = [
@@ -154,7 +154,7 @@ const RPC_URLS = [
    (whose nested calls come from the MintBeacon contract, which also
    holds no Agent ID). One difference: the real probe trips contract-
    caller ("OnlyWallets") gates first, the off-chain probe trips the
-   Agent ID gate first — same verdict and method either way. */
+   Agent ID gate first - same verdict and method either way. */
 const PROBE_SENDER = "0xb77a76C5b8CDcF9cf7c1A60D914a144451D73A69";
 
 /* Verdicts (MintBeacon.sol enum Verdict): 0 UNKNOWN, 1 FREE, 2 LIKELY_FREE, 3 PAID.
@@ -166,8 +166,8 @@ const METHODS = ["NONE", "FREE_LANE_GETTER", "PRICE_ZERO", "STATIC_WRITE",
   "REVERT_GATE", "REVERT_PAYMENT", "PRICE_POSITIVE", "REVERT_UNKNOWN", "UNAVAILABLE"];
 
 const VERDICT_TEXT = {
-  FREE: "Looks free to mint for the checker address — a free lane or a zero price was found. Gas only.",
-  LIKELY_FREE: "Probably free — deep-check recommended. No payment was seen, but the probe could not prove the mint costs nothing (it was stopped by an identity check, or a mint function looked like it reached a state change). Do NOT treat this as a guarantee of free.",
+  FREE: "Looks free to mint for the checker address - a free lane or a zero price was found. Gas only.",
+  LIKELY_FREE: "Probably free - deep-check recommended. No payment was seen, but the probe could not prove the mint costs nothing (it was stopped by an identity check, or a mint function looked like it reached a state change). Do NOT treat this as a guarantee of free.",
   PAID: "This mint charges. A payment error or a price above 0 was seen.",
   UNKNOWN: "The probe could not decide. The mint may be closed, sold out, signature-gated, or use a pattern this probe does not recognise.",
 };
@@ -175,7 +175,7 @@ const METHOD_TEXT = {
   NONE: "No signal observed.",
   FREE_LANE_GETTER: "A free-lane getter (canFreeMint / freeLeft / freeRemainingOf / freeFor) said the checker has a free mint open right now.",
   PRICE_ZERO: "Every price getter that answered returned 0.",
-  STATIC_WRITE: "A mint function reverted with empty data after burning real gas — most likely it reached a state change with value 0.",
+  STATIC_WRITE: "A mint function reverted with empty data after burning real gas - most likely it reached a state change with value 0.",
   REVERT_GATE: "Stopped by an identity / EOA check, no payment error seen.",
   REVERT_PAYMENT: "Stopped by a payment error.",
   PRICE_POSITIVE: "A price getter returned more than 0 and no free path was found.",
@@ -276,7 +276,7 @@ async function rpcCall(method, params, attempts) {
       if (j && "result" in j && j.result !== undefined) return j.result;
       throw new RpcError(j && j.error ? j.error : { message: "empty RPC response" });
     } catch (e) {
-      if (e instanceof RpcError) throw e; // definitive answer (e.g. revert) — do not retry
+      if (e instanceof RpcError) throw e; // definitive answer (e.g. revert) - do not retry
       lastErr = e;
     }
   }
@@ -286,7 +286,7 @@ async function ethCall(to, data, from) {
   return rpcCall("eth_call", [{ from: from || PROBE_SENDER, to: to, data: data, value: "0x0", gas: "0x" + PROBE_GAS.toString(16) }, "latest"]);
 }
 /* eth_call returning { ok, ret }: ret is the return/revert data hex.
-   The revert data lives in the JSON-RPC error's `data` field — take it
+   The revert data lives in the JSON-RPC error's `data` field - take it
    verbatim; only fall back to message regexes when the endpoint does
    not provide it. Mirrors test/simulate_real_contracts.py raw_call(). */
 async function rawCall(to, data) {
@@ -463,10 +463,10 @@ function refreshDeployUI() {
   const banner = $("deployBanner");
   if (!mb) {
     banner.className = "banner warn";
-    banner.innerHTML = "<b>MintBeacon is not deployed yet</b> — the on-chain check button is disabled until the deployed address is set (paste it above, or set <span class='mono'>MINTBEACON_ADDRESS</span> at the top of this file). The free off-chain probe below still works.";
+    banner.innerHTML = "<b>MintBeacon is not deployed yet</b> - the on-chain check button is disabled until the deployed address is set (paste it above, or set <span class='mono'>MINTBEACON_ADDRESS</span> at the top of this file). The free off-chain probe below still works.";
     $("checkOnchainBtn").disabled = true;
-    $("statCheckers").textContent = "—";
-    $("statTotal").textContent = "—";
+    $("statCheckers").textContent = "-";
+    $("statTotal").textContent = "-";
   } else {
     banner.className = "banner ok";
     banner.innerHTML = "MintBeacon deployed at <span class='mono'>" + mb + "</span>. On-chain probe and check are available.";
@@ -491,7 +491,7 @@ function showResult(res, gateBalance, source, recorded) {
   badge.textContent = res.verdict;
   badge.className = "badge " + res.verdict;
   $("verdictText").textContent = VERDICT_TEXT[res.verdict] || "";
-  $("methodText").textContent = res.method + " — " + (METHOD_TEXT[res.method] || "");
+  $("methodText").textContent = res.method + " - " + (METHOD_TEXT[res.method] || "");
   const supply = res.maxSupply > 0n
     ? res.minted.toString() + " / " + res.maxSupply.toString() + " minted (" + (res.maxSupply - res.minted).toString() + " left)"
     : res.minted.toString() + " minted (no supply cap read)";
@@ -521,7 +521,7 @@ async function doVerify() {
   const status = $("verifyStatus");
   if (!isAddress(target)) { status.textContent = "Enter a valid contract address (0x followed by 40 hex characters)."; status.className = "status error"; return; }
   if (!isAddress(checker)) { status.textContent = "Checker address is not valid."; status.className = "status error"; return; }
-  status.textContent = "Probing " + target + " — read-only calls, no signature, no gas…";
+  status.textContent = "Probing " + target + " - read-only calls, no signature, no gas…";
   status.className = "status";
   $("resultCard").hidden = true;
   try {
@@ -537,14 +537,14 @@ async function doVerify() {
         status.textContent = "On-chain verdict: " + on.verdict + " / " + on.method + ".";
         return;
       } catch (e) {
-        status.textContent = "On-chain probe failed (" + e.message + ") — falling back to the off-chain probe.";
+        status.textContent = "On-chain probe failed (" + e.message + ") - falling back to the off-chain probe.";
       }
     }
     const off = await classifyOffChain(target, checker);
     showResult(off, gate, "Off-chain probe (read-only calls straight to the target; MintBeacon not deployed).", null);
     status.textContent = "Off-chain verdict: " + off.verdict + " / " + off.method + ".";
   } catch (e) {
-    status.textContent = "Probe failed: " + e.message + " (RPC endpoints may be busy — try again).";
+    status.textContent = "Probe failed: " + e.message + " (RPC endpoints may be busy - try again).";
     status.className = "status error";
   }
 }
@@ -557,7 +557,7 @@ async function doCheckOnchainPreview() {
   const mb = getMintBeaconAddress();
   const status = $("sendStatus");
   const pvWarn = $("pvWarn");
-  if (!mb) { status.textContent = "MintBeacon is not deployed yet — set the deployed address first."; status.className = "status error"; return; }
+  if (!mb) { status.textContent = "MintBeacon is not deployed yet - set the deployed address first."; status.className = "status error"; return; }
   if (!isAddress(target)) { status.textContent = "Enter a valid target contract address first (step 2)."; status.className = "status error"; return; }
   if (!window.ethereum) { status.textContent = "No injected wallet found (window.ethereum). Open this page in a wallet browser (e.g. the Binance Wallet app browser) to record a check on-chain."; status.className = "status error"; return; }
   try {
@@ -594,12 +594,12 @@ async function doCheckOnchainPreview() {
       pvWarn.className = "status error";
       $("confirmSendBtn").disabled = true;
     } else {
-      pvWarn.textContent = "Connected wallet holds an Agent ID. Review the preview above, then confirm — your wallet will ask you to approve the transaction.";
+      pvWarn.textContent = "Connected wallet holds an Agent ID. Review the preview above, then confirm - your wallet will ask you to approve the transaction.";
       pvWarn.className = "status";
       $("confirmSendBtn").disabled = false;
     }
     $("previewCard").hidden = false;
-    status.textContent = "Preview ready — review it above before sending.";
+    status.textContent = "Preview ready - review it above before sending.";
   } catch (e) {
     status.textContent = "Could not build the preview: " + e.message;
     status.className = "status error";
@@ -610,10 +610,10 @@ async function doSendChecked() {
   if (!pendingTx) return;
   try {
     $("confirmSendBtn").disabled = true;
-    status.textContent = "Waiting for your wallet approval — check your wallet app…";
+    status.textContent = "Waiting for your wallet approval - check your wallet app…";
     status.className = "status";
     const txHash = await window.ethereum.request({ method: "eth_sendTransaction", params: [pendingTx] });
-    status.innerHTML = "Sent. Transaction: <a class='mono' href='" + BSCSCAN_TX + txHash + "' target='_blank' rel='noopener'>" + txHash + "</a> — wait for confirmation, then re-run Verify to see the recorded verdict.";
+    status.innerHTML = "Sent. Transaction: <a class='mono' href='" + BSCSCAN_TX + txHash + "' target='_blank' rel='noopener'>" + txHash + "</a> - wait for confirmation, then re-run Verify to see the recorded verdict.";
     status.className = "status";
     $("previewCard").hidden = true;
     pendingTx = null;
@@ -647,14 +647,14 @@ function init() {
     const v = $("deployInput").value.trim();
     if (v && !isAddress(v)) { $("deployStatus").textContent = "Not a valid address (0x + 40 hex)."; $("deployStatus").className = "status error"; return; }
     if (v) localStorage.setItem("mintbeacon_address", v); else localStorage.removeItem("mintbeacon_address");
-    $("deployStatus").textContent = v ? "Using MintBeacon at " + v + "." : "Cleared — MintBeacon treated as not deployed.";
+    $("deployStatus").textContent = v ? "Using MintBeacon at " + v + "." : "Cleared - MintBeacon treated as not deployed.";
     $("deployStatus").className = "status";
     refreshDeployUI();
   });
   $("clearDeployBtn").addEventListener("click", function () {
     $("deployInput").value = "";
     localStorage.removeItem("mintbeacon_address");
-    $("deployStatus").textContent = "Cleared — MintBeacon treated as not deployed.";
+    $("deployStatus").textContent = "Cleared - MintBeacon treated as not deployed.";
     refreshDeployUI();
   });
   $("verifyBtn").addEventListener("click", doVerify);
@@ -664,7 +664,7 @@ function init() {
   $("cancelPreviewBtn").addEventListener("click", function () {
     $("previewCard").hidden = true;
     pendingTx = null;
-    $("sendStatus").textContent = "Cancelled — nothing was sent.";
+    $("sendStatus").textContent = "Cancelled - nothing was sent.";
   });
   document.querySelectorAll("[data-example]").forEach(function (b) {
     b.addEventListener("click", function () { $("targetInput").value = b.getAttribute("data-example"); });
